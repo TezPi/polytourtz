@@ -8,7 +8,7 @@ export type ClientSettings = {
   /** Keeps the board still: no orbit, pan or zoom while it is on. */
   boardViewLocked: boolean;
   reducedMotion: "system" | "on" | "off";
-  locale: "fr" | "en";
+  locale: "fr" | "en" | "vi";
 };
 
 export const SETTINGS_KEY = "polytour.settings.v1";
@@ -20,7 +20,8 @@ function browserLocale(): ClientSettings["locale"] {
     return "fr";
   for (const language of [...(navigator.languages ?? []), navigator.language]) {
     const supported = language?.toLowerCase().split("-")[0];
-    if (supported === "fr" || supported === "en") return supported;
+    if (supported === "fr" || supported === "en" || supported === "vi")
+      return supported;
   }
   return "fr";
 }
@@ -62,7 +63,7 @@ function validate(value: unknown, fallback: ClientSettings): ClientSettings {
         ? record.reducedMotion
         : fallback.reducedMotion,
     locale:
-      record.locale === "fr" || record.locale === "en"
+      record.locale === "fr" || record.locale === "en" || record.locale === "vi"
         ? record.locale
         : fallback.locale,
   };
@@ -90,7 +91,10 @@ function read(): ClientSettings {
       graphics: graphics === "true" ? "low" : "high",
       reducedMotion:
         motion === "true" ? "on" : motion === "false" ? "off" : "system",
-      locale: locale === "fr" || locale === "en" ? locale : fallback.locale,
+      locale:
+        locale === "fr" || locale === "en" || locale === "vi"
+          ? locale
+          : fallback.locale,
     };
     save(migrated);
     return migrated;

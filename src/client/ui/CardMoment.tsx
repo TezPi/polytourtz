@@ -143,6 +143,7 @@ export default function CardMoment({
           short: t(
             `${money(event.amount)} versés à la banque.`,
             `${money(event.amount)} paid to the bank.`,
+            `Đã nộp ${money(event.amount)} cho ngân hàng.`,
           ),
         };
   const player = context.next.players.find((entry) => entry.seat === seat);

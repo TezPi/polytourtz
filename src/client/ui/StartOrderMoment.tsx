@@ -9,9 +9,10 @@ import { useLocale } from "../i18n.js";
 import { PLAYER_COLORS } from "./board-display.js";
 import "./StartOrderMoment.css";
 
-const CORNERS = [3, 0, 1, 2] as const;
+const CORNERS = [4, 3, 0, 1, 2] as const;
 // CSS rotation starts at twelve o'clock; each arrow lands in a HUD quadrant.
-const POINTER_ANGLES = [225, 315, 45, 135] as const;
+const POINTER_ANGLES = [225, 315, 45, 135, 0] as const;
+const FIVE_POINTER_ANGLES = [216, 288, 72, 144, 0] as const;
 
 type StartMoment = {
   state: PublicState;
@@ -103,14 +104,22 @@ export default function StartOrderMoment() {
   const starter = state.players.find(
     (player) => player.seat === state.activeSeat,
   );
-  const angle = POINTER_ANGLES[state.activeSeat];
+  const hasFifth = state.players.some((player) => player.seat === 4);
+  const angle = (hasFifth ? FIVE_POINTER_ANGLES : POINTER_ANGLES)[
+    state.activeSeat
+  ];
   const order = state.startingTurnOrder
     .map((seat) => state.players.find((player) => player.seat === seat))
     .filter((player) => player !== undefined);
-  const sectors = [2, 3, 0, 1].map(
-    (seat, index) =>
-      `${state.players.some((player) => player.seat === seat) ? PLAYER_COLORS[seat] : "#dce3df"} ${index * 90}deg ${(index + 1) * 90}deg`,
-  );
+  const sectors = hasFifth
+    ? [4, 2, 3, 0, 1].map(
+        (seat, index) =>
+          `${state.players.some((player) => player.seat === seat) ? PLAYER_COLORS[seat] : "#dce3df"} ${index * 72}deg ${(index + 1) * 72}deg`,
+      )
+    : [2, 3, 0, 1].map(
+        (seat, index) =>
+          `${state.players.some((player) => player.seat === seat) ? PLAYER_COLORS[seat] : "#dce3df"} ${index * 90}deg ${(index + 1) * 90}deg`,
+      );
 
   return createPortal(
     <dialog
@@ -133,7 +142,11 @@ export default function StartOrderMoment() {
         <div className="start-order-stage">
           <div
             className="start-order-wheel"
-            style={{ background: `conic-gradient(${sectors.join(", ")})` }}
+            style={{
+              background: hasFifth
+                ? `conic-gradient(from -36deg, ${sectors.join(", ")})`
+                : `conic-gradient(${sectors.join(", ")})`,
+            }}
             aria-hidden="true"
           >
             <motion.div
@@ -174,6 +187,7 @@ export default function StartOrderMoment() {
             ? t(
                 `${starter?.name ?? "Le premier joueur"} commence !`,
                 `${starter?.name ?? "The first player"} starts!`,
+                `${starter?.name ?? "Người chơi đầu tiên"} đi trước!`,
               )
             : ""}
         </p>

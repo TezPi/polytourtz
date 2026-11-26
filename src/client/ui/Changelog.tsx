@@ -76,6 +76,7 @@ export default function Changelog() {
         aria-label={t(
           `Version ${APP_VERSION} : voir les nouveautés`,
           `Version ${APP_VERSION}: view changelog`,
+          `Phiên bản ${APP_VERSION}: xem cập nhật`,
         )}
         aria-haspopup="dialog"
         aria-expanded={open}

@@ -47,12 +47,13 @@ export const RoomDiagnosticsSchema = z
               z.literal(1),
               z.literal(2),
               z.literal(3),
+              z.literal(4),
             ]),
             ...point,
           })
           .strict(),
       )
-      .max(4),
+      .max(5),
   })
   .strict();
 

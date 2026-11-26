@@ -5,6 +5,23 @@ export {
   getTileLandPrice,
 } from "../board/index.js";
 export {
+  BOT_DEFAULT_COSMETICS,
+  CHARACTER_SKINS,
+  type CharacterSkin,
+  DEFAULT_COSMETICS,
+  EYEWEAR_ACCESSORIES,
+  type EyewearAccessory,
+  GEAR_ACCESSORIES,
+  type GearAccessory,
+  HAT_ACCESSORIES,
+  type HatAccessory,
+  isDefaultCosmetics,
+  OUTFIT_TONES,
+  type OutfitTone,
+  type PlayerCosmetics,
+  resolveCosmetics,
+} from "./cosmetics.js";
+export {
   actionCost,
   applyAction,
   applyEvent,

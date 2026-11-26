@@ -5,7 +5,7 @@ export const ECONOMY = {
   startingCash: 2_000_000,
   startSalary: 400_000,
   minimumPlayers: 2,
-  maximumPlayers: 4,
+  maximumPlayers: 5,
   roundLimit: 20,
   buyoutMultiplier: 2,
   resortPrice: 200_000,

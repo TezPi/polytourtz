@@ -167,6 +167,7 @@ const PAWN_SLOTS: readonly Vec2[] = [
   [1, -1],
   [-1, 1],
   [1, 1],
+  [0, 0],
 ];
 
 /**
@@ -218,6 +219,11 @@ export function reserveAnchor(seat: Seat): {
   position: Vec2;
   rotation: number;
 } {
+  if (seat === 4)
+    return {
+      position: fromSide(2, 3.2, BOARD_HALF + 1.2),
+      rotation: SIDES[2].rotation,
+    };
   return {
     position: fromSide(seat, 0, BOARD_HALF + 1.2),
     rotation: SIDES[seat].rotation,

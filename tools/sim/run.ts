@@ -23,8 +23,8 @@ const players = option("--players", 4);
 const roundLimit = option("--rounds", 20);
 if (!Number.isInteger(roundLimit) || roundLimit < 1 || roundLimit > 200)
   throw new RangeError("--rounds must be an integer from 1 to 200");
-if (!Number.isInteger(players) || players < 2 || players > 4)
-  throw new RangeError("--players must be an integer from 2 to 4");
+if (!Number.isInteger(players) || players < 2 || players > 5)
+  throw new RangeError("--players must be an integer from 2 to 5");
 const rulesIndex = process.argv.indexOf("--rules");
 const rules = (
   rulesIndex < 0 ? "reference" : process.argv[rulesIndex + 1]

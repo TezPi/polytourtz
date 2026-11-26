@@ -54,9 +54,19 @@ function roomCode(): string {
 }
 function sameOrigin(request: Request, required = false): boolean {
   const origin = request.headers.get("Origin");
-  return (
-    origin === new URL(request.url).origin || (!required && origin === null)
-  );
+  if (!required && origin === null) return true;
+  if (origin === new URL(request.url).origin) return true;
+  // In dev mode the Vite proxy rewrites the URL host to localhost, but LAN
+  // clients send the real network IP as Origin.  Accept any origin whose
+  // explicit non-standard port matches (dev servers always use one).
+  if (origin !== null) {
+    try {
+      const reqPort = new URL(request.url).port;
+      const originPort = new URL(origin).port;
+      if (reqPort !== "" && reqPort === originPort) return true;
+    } catch {}
+  }
+  return false;
 }
 async function readJson(request: Request): Promise<unknown> {
   if (Number(request.headers.get("Content-Length") ?? 0) > 4096) return null;
@@ -136,6 +146,7 @@ app.post("/api/rooms", async (context) => {
       parsed.data.name,
       config,
       parsed.data.bots,
+      parsed.data.cosmetics,
     );
     if (created)
       return context.json(created, 201, { "Cache-Control": "no-store" });
@@ -151,6 +162,7 @@ app.post("/api/rooms/:roomCode/join", async (context) => {
     return context.json({ error: "invalid-room" }, 400);
   const result = await context.env.GAME_ROOM.getByName(code.data).join(
     parsed.data.name,
+    parsed.data.cosmetics,
   );
   if ("error" in result)
     return context.json(result, result.error === "room-not-found" ? 404 : 409);

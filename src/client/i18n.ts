@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { VI_TRANSLATIONS } from "./i18n-vi.js";
 import { applyLocaleMetadata } from "./seo.js";
 import {
   getSettings,
@@ -6,7 +7,7 @@ import {
   updateSettings,
 } from "./settings/store.js";
 
-export type Locale = "fr" | "en";
+export type Locale = "fr" | "en" | "vi";
 let appliedLocale = getSettings().locale;
 applyLocaleMetadata(appliedLocale);
 subscribeSettings(() => {
@@ -24,8 +25,11 @@ export function setLocale(next: Locale) {
   updateSettings({ locale: next });
 }
 
-export function translate(fr: string, en: string): string {
-  return getLocale() === "en" ? en : fr;
+export function translate(fr: string, en: string, vi?: string): string {
+  const current = getLocale();
+  if (current === "en") return en;
+  if (current === "vi") return vi ?? VI_TRANSLATIONS[en] ?? en;
+  return fr;
 }
 
 /** Language is a local display preference; it never enters the room protocol. */

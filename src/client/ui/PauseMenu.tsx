@@ -329,6 +329,7 @@ export default function PauseMenu({
                             aria-label={t(
                               `Accepter la pause pour ${player?.name}`,
                               `Accept pause for ${player?.name}`,
+                              `Đồng ý tạm dừng cho ${player?.name}`,
                             )}
                             onClick={() => onVote(seat, true)}
                           >
@@ -341,6 +342,7 @@ export default function PauseMenu({
                             aria-label={t(
                               `Refuser la pause pour ${player?.name}`,
                               `Decline pause for ${player?.name}`,
+                              `Từ chối tạm dừng cho ${player?.name}`,
                             )}
                             onClick={() => onVote(seat, false)}
                           >
@@ -374,6 +376,7 @@ export default function PauseMenu({
                     ? t(
                         `Nouvelle demande dans ${countdown(cooldown)}.`,
                         `Next request in ${countdown(cooldown)}.`,
+                        `Có thể yêu cầu lại sau ${countdown(cooldown)}.`,
                       )
                     : t(
                         "Une demande toutes les 5 minutes pour la salle.",

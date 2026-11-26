@@ -5,6 +5,7 @@ import type {
   BotDifficulty,
   GameEvent,
   GameState,
+  PlayerCosmetics,
   Seat,
   SeatInfo,
 } from "../shared/engine/index.js";
@@ -55,6 +56,7 @@ type StoredSeat = {
   control: "human" | "bot";
   token_hash: string | null;
   botDifficulty?: BotDifficulty;
+  cosmetics?: PlayerCosmetics;
 };
 type StoredMember = {
   id: string;
@@ -62,6 +64,7 @@ type StoredMember = {
   token_hash: string;
   approved: number;
   joined_at: number;
+  cosmetics?: PlayerCosmetics;
 };
 type Attachment = {
   /** The device's own seat; null while its person waits for a place. */
@@ -83,8 +86,8 @@ type PendingDice = {
   atSeq: number;
 };
 type EventRow = { seq: number; json: string; proof: string | null };
-const BOT_NAMES = ["Iris", "Milo", "Nova", "Atlas"] as const;
-const SEATS = [0, 1, 2, 3] as const;
+const BOT_NAMES = ["Iris", "Milo", "Nova", "Atlas", "Cleo"] as const;
+const SEATS = [0, 1, 2, 3, 4] as const;
 /** People who can wait at once for a place, an approval or the next game. */
 const MAX_WAITING = 6;
 /** A lobby, or a lobby the leader brought back, expires after two hours. */
@@ -383,14 +386,18 @@ export class GameRoom extends DurableObject<Env> {
     if (!this.schemaReady) return [];
     return this.ctx.storage.sql
       .exec<
-        Omit<StoredSeat, "botDifficulty"> & {
+        Omit<StoredSeat, "botDifficulty" | "cosmetics"> & {
           bot_difficulty?: BotDifficulty | null;
+          cosmetics?: string | null;
         }
       >("SELECT * FROM seats ORDER BY seat")
       .toArray()
-      .map(({ bot_difficulty, ...seat }) => ({
+      .map(({ bot_difficulty, cosmetics, ...seat }) => ({
         ...seat,
         ...(bot_difficulty ? { botDifficulty: bot_difficulty } : {}),
+        ...(cosmetics
+          ? { cosmetics: JSON.parse(cosmetics) as PlayerCosmetics }
+          : {}),
       }));
   }
   /** Add the optional column only when a lobby changes or starts, never on lookup. */
@@ -403,13 +410,35 @@ export class GameRoom extends DurableObject<Env> {
         "ALTER TABLE seats ADD COLUMN bot_difficulty TEXT",
       );
   }
+  private hasColumn(table: "seats" | "members", name: string): boolean {
+    return this.ctx.storage.sql
+      .exec<{ name: string }>(`PRAGMA table_info(${table})`)
+      .toArray()
+      .some((column) => column.name === name);
+  }
+  private ensureCosmeticsColumn(): void {
+    if (!this.hasColumn("seats", "cosmetics"))
+      this.ctx.storage.sql.exec("ALTER TABLE seats ADD COLUMN cosmetics TEXT");
+  }
+  private ensureMembersCosmeticsColumn(): void {
+    if (!this.hasColumn("members", "cosmetics"))
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE members ADD COLUMN cosmetics TEXT",
+      );
+  }
   private members(): StoredMember[] {
     if (!this.schemaReady) return [];
     return this.ctx.storage.sql
-      .exec<StoredMember>(
-        "SELECT id,name,token_hash,approved,joined_at FROM members ORDER BY joined_at,id",
+      .exec<Omit<StoredMember, "cosmetics"> & { cosmetics?: string | null }>(
+        "SELECT * FROM members ORDER BY joined_at,id",
       )
-      .toArray();
+      .toArray()
+      .map(({ cosmetics, ...member }) => ({
+        ...member,
+        ...(cosmetics
+          ? { cosmetics: JSON.parse(cosmetics) as PlayerCosmetics }
+          : {}),
+      }));
   }
   private localSeats(): { seat: Seat; controller: Seat }[] {
     if (!this.schemaReady) return [];
@@ -504,6 +533,7 @@ export class GameRoom extends DurableObject<Env> {
     name: string,
     config: RoomConfig,
     bots = 0,
+    cosmetics?: PlayerCosmetics,
   ): Promise<RoomCredentials | null> {
     if (this.deletingRoom) return null;
     const token = newToken();
@@ -520,12 +550,22 @@ export class GameRoom extends DurableObject<Env> {
         } satisfies RoomMeta);
         this.writeMeta("stateVersion", CURRENT_STATE_VERSION);
         this.writeMeta("rulesVersion", RULES_VERSION);
-        this.ctx.storage.sql.exec(
-          "INSERT INTO seats(seat,name,control,token_hash) VALUES(0,?,'human',?)",
-          name,
-          tokenHash,
-        );
-        for (const seat of SEATS.slice(1, 1 + Math.max(0, Math.min(3, bots))))
+        if (cosmetics) {
+          this.ensureCosmeticsColumn();
+          this.ctx.storage.sql.exec(
+            "INSERT INTO seats(seat,name,control,token_hash,cosmetics) VALUES(0,?,'human',?,?)",
+            name,
+            tokenHash,
+            JSON.stringify(cosmetics),
+          );
+        } else {
+          this.ctx.storage.sql.exec(
+            "INSERT INTO seats(seat,name,control,token_hash) VALUES(0,?,'human',?)",
+            name,
+            tokenHash,
+          );
+        }
+        for (const seat of SEATS.slice(1, 1 + Math.max(0, Math.min(4, bots))))
           this.ctx.storage.sql.exec(
             "INSERT INTO seats(seat,name,control,token_hash) VALUES(?,?,'bot',NULL)",
             seat,
@@ -550,7 +590,10 @@ export class GameRoom extends DurableObject<Env> {
    * locked rooms until the leader admits them, matches until the next lobby
    * or until the leader hands them a bot's place.
    */
-  async join(name: string): Promise<RoomCredentials | { error: string }> {
+  async join(
+    name: string,
+    cosmetics?: PlayerCosmetics,
+  ): Promise<RoomCredentials | { error: string }> {
     if (this.deletingRoom) return { error: "room-not-found" };
     const token = newToken();
     const tokenHash = await hashToken(token);
@@ -558,7 +601,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!room) return { error: "room-not-found" };
     const playing = this.readState() !== null;
     const locked = this.readMeta<boolean>("locked") === true;
-    // Four people already hold the places, so none could ever open up.
+    // Five people already hold the places, so none could ever open up.
     const seat = this.freeSeat();
     if (seat === undefined) return { error: "room-full" };
     if (!playing && !locked) {
@@ -566,26 +609,50 @@ export class GameRoom extends DurableObject<Env> {
         (entry) => entry.control === "human" && entry.token_hash !== null,
       );
       this.ctx.storage.transactionSync(() => {
-        this.ctx.storage.sql.exec(
-          "INSERT OR REPLACE INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',?)",
-          seat,
-          name,
-          tokenHash,
-        );
+        if (cosmetics) {
+          this.ensureCosmeticsColumn();
+          this.ctx.storage.sql.exec(
+            "INSERT OR REPLACE INTO seats(seat,name,control,token_hash,cosmetics) VALUES(?,?,'human',?,?)",
+            seat,
+            name,
+            tokenHash,
+            JSON.stringify(cosmetics),
+          );
+        } else {
+          this.ctx.storage.sql.exec(
+            "INSERT OR REPLACE INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',?)",
+            seat,
+            name,
+            tokenHash,
+          );
+        }
         if (needsLeader) this.writeMeta("host", seat);
       });
       this.broadcast({ type: "lobby", lobby: this.lobby() });
       return { roomCode: room.roomCode, seat, token };
     }
     if (this.members().length >= MAX_WAITING) return { error: "room-full" };
-    this.ctx.storage.sql.exec(
-      "INSERT INTO members(id,name,token_hash,approved,joined_at) VALUES(?,?,?,?,?)",
-      newMemberId(),
-      name,
-      tokenHash,
-      locked ? 0 : 1,
-      Date.now(),
-    );
+    if (cosmetics) {
+      this.ensureMembersCosmeticsColumn();
+      this.ctx.storage.sql.exec(
+        "INSERT INTO members(id,name,token_hash,approved,joined_at,cosmetics) VALUES(?,?,?,?,?,?)",
+        newMemberId(),
+        name,
+        tokenHash,
+        locked ? 0 : 1,
+        Date.now(),
+        JSON.stringify(cosmetics),
+      );
+    } else {
+      this.ctx.storage.sql.exec(
+        "INSERT INTO members(id,name,token_hash,approved,joined_at) VALUES(?,?,?,?,?)",
+        newMemberId(),
+        name,
+        tokenHash,
+        locked ? 0 : 1,
+        Date.now(),
+      );
+    }
     this.broadcast({ type: "lobby", lobby: this.lobby() });
     return { roomCode: room.roomCode, seat: null, token };
   }
@@ -725,6 +792,7 @@ export class GameRoom extends DurableObject<Env> {
                   entry.botDifficulty ?? room.config.botDifficulty ?? "medium",
               }
             : {}),
+          ...(entry?.cosmetics ? { cosmetics: entry.cosmetics } : {}),
           online:
             this.socketsWhere(
               (attachment) => attachment.seat === (controller ?? seat),
@@ -751,12 +819,23 @@ export class GameRoom extends DurableObject<Env> {
         (entry) => entry.control === "human" && entry.token_hash !== null,
       );
       this.ctx.storage.transactionSync(() => {
-        this.ctx.storage.sql.exec(
-          "INSERT OR REPLACE INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',?)",
-          seat,
-          member.name,
-          member.token_hash,
-        );
+        if (member.cosmetics) {
+          this.ensureCosmeticsColumn();
+          this.ctx.storage.sql.exec(
+            "INSERT OR REPLACE INTO seats(seat,name,control,token_hash,cosmetics) VALUES(?,?,'human',?,?)",
+            seat,
+            member.name,
+            member.token_hash,
+            JSON.stringify(member.cosmetics),
+          );
+        } else {
+          this.ctx.storage.sql.exec(
+            "INSERT OR REPLACE INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',?)",
+            seat,
+            member.name,
+            member.token_hash,
+          );
+        }
         this.ctx.storage.sql.exec("DELETE FROM members WHERE id=?", member.id);
         if (needsLeader) this.writeMeta("host", seat);
       });
@@ -791,8 +870,18 @@ export class GameRoom extends DurableObject<Env> {
     }
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket")
       return Response.json({ lobby: this.lobby() });
-    if (request.headers.get("Origin") !== url.origin)
-      return Response.json({ error: "origin-rejected" }, { status: 403 });
+    if (request.headers.get("Origin") !== url.origin) {
+      // In dev mode the Vite proxy rewrites request.url to localhost, but LAN
+      // clients send their real IP as Origin.  Accept same explicit port.
+      const clientOrigin = request.headers.get("Origin");
+      const reqPort = url.port;
+      if (
+        !clientOrigin ||
+        reqPort === "" ||
+        new URL(clientOrigin).port !== reqPort
+      )
+        return Response.json({ error: "origin-rejected" }, { status: 403 });
+    }
     const token = request.headers
       .get("Sec-WebSocket-Protocol")
       ?.split(",")
@@ -1198,11 +1287,21 @@ export class GameRoom extends DurableObject<Env> {
         if (op.seat !== this.freeSeat())
           return this.reject(socket, message.id, "seat-order");
         done(() => {
-          this.ctx.storage.sql.exec(
-            "INSERT INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',NULL)",
-            op.seat,
-            op.name,
-          );
+          if (op.cosmetics) {
+            this.ensureCosmeticsColumn();
+            this.ctx.storage.sql.exec(
+              "INSERT INTO seats(seat,name,control,token_hash,cosmetics) VALUES(?,?,'human',NULL,?)",
+              op.seat,
+              op.name,
+              JSON.stringify(op.cosmetics),
+            );
+          } else {
+            this.ctx.storage.sql.exec(
+              "INSERT INTO seats(seat,name,control,token_hash) VALUES(?,?,'human',NULL)",
+              op.seat,
+              op.name,
+            );
+          }
           this.ctx.storage.sql.exec(
             "INSERT OR REPLACE INTO local_seats(seat,controller) VALUES(?,?)",
             op.seat,
@@ -1225,6 +1324,32 @@ export class GameRoom extends DurableObject<Env> {
       });
       this.compactLobbySeats();
       this.seatWaitingMembers();
+      return finish();
+    }
+    if (op.type === "cosmetics") {
+      if (saved) return this.reject(socket, message.id, "game-already-started");
+      const entry = this.seats().find(
+        (candidate) => candidate.seat === op.seat,
+      );
+      if (!entry) return this.reject(socket, message.id, "not-seated");
+      const allowed =
+        op.seat === seat ||
+        this.controllerOf(op.seat) === seat ||
+        (leader && entry.control === "bot");
+      if (!allowed)
+        return this.reject(
+          socket,
+          message.id,
+          entry.control === "bot" ? "host-only" : "not-your-seat",
+        );
+      done(() => {
+        this.ensureCosmeticsColumn();
+        this.ctx.storage.sql.exec(
+          "UPDATE seats SET cosmetics=? WHERE seat=?",
+          JSON.stringify(op.cosmetics),
+          op.seat,
+        );
+      });
       return finish();
     }
     if (!leader) return this.reject(socket, message.id, "host-only");
@@ -1374,6 +1499,7 @@ export class GameRoom extends DurableObject<Env> {
                   entry?.botDifficulty ?? room.config.botDifficulty ?? "medium",
               }
             : {}),
+          ...(entry?.cosmetics ? { cosmetics: entry.cosmetics } : {}),
         },
       ];
     });
@@ -1455,12 +1581,30 @@ export class GameRoom extends DurableObject<Env> {
       false,
       () => {
         this.ensureBotDifficultyColumn();
-        this.ctx.storage.sql.exec(
-          "UPDATE seats SET name=?,control='human',token_hash=?,bot_difficulty=NULL WHERE seat=?",
-          member.name,
-          member.token_hash,
-          op.seat,
-        );
+        if (member.cosmetics) {
+          this.ensureCosmeticsColumn();
+          this.ctx.storage.sql.exec(
+            "UPDATE seats SET name=?,control='human',token_hash=?,bot_difficulty=NULL,cosmetics=? WHERE seat=?",
+            member.name,
+            member.token_hash,
+            JSON.stringify(member.cosmetics),
+            op.seat,
+          );
+        } else if (this.hasColumn("seats", "cosmetics")) {
+          this.ctx.storage.sql.exec(
+            "UPDATE seats SET name=?,control='human',token_hash=?,bot_difficulty=NULL,cosmetics=NULL WHERE seat=?",
+            member.name,
+            member.token_hash,
+            op.seat,
+          );
+        } else {
+          this.ctx.storage.sql.exec(
+            "UPDATE seats SET name=?,control='human',token_hash=?,bot_difficulty=NULL WHERE seat=?",
+            member.name,
+            member.token_hash,
+            op.seat,
+          );
+        }
         this.ctx.storage.sql.exec("DELETE FROM members WHERE id=?", member.id);
         // Someone who stepped away gets the usual reconnect grace.
         if (!present)

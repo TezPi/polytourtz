@@ -15,29 +15,53 @@ export type RoomSettingsProps = {
 };
 
 const TOGGLES = [
-  ["lineMonopoly", "Victoire par ligne complète", "Win with a full side"],
+  [
+    "lineMonopoly",
+    "Victoire par ligne complète",
+    "Win with a full side",
+    "Thắng khi sở hữu trọn một cạnh",
+  ],
   [
     "tripleMonopoly",
     "Victoire par trois collections",
     "Win with three complete sets",
+    "Thắng khi đủ ba bộ quốc gia",
   ],
   [
     "resortMonopoly",
     "Victoire par les quatre plages",
     "Win with all four beaches",
+    "Thắng khi sở hữu cả bốn bãi biển",
   ],
-  ["hotelsDirectly", "Hôtels directement achetables", "Buy hotels directly"],
-  ["extraRollOnDouble", "Rejouer après un double", "Roll again on doubles"],
+  [
+    "hotelsDirectly",
+    "Hôtels directement achetables",
+    "Buy hotels directly",
+    "Cho phép xây thẳng Khách sạn",
+  ],
+  [
+    "extraRollOnDouble",
+    "Rejouer après un double",
+    "Roll again on doubles",
+    "Tung đôi được đi thêm lượt",
+  ],
   [
     "tripleDoubleToIsland",
     "Troisième double : direction l'île",
     "Third double goes to the island",
+    "Tung đôi 3 lần liên tiếp: ra Đảo hoang",
   ],
-  ["botCanBuild", "Les bots peuvent construire", "Bots can build"],
+  [
+    "botCanBuild",
+    "Les bots peuvent construire",
+    "Bots can build",
+    "Cho phép bot xây nhà",
+  ],
   [
     "giftCanBankrupt",
     "Les cadeaux peuvent causer une faillite",
     "Gifts can cause bankruptcy",
+    "Quà tặng có thể gây phá sản",
   ],
 ] as const;
 
@@ -130,7 +154,11 @@ function NumberSetting({
             inputMode="numeric"
             value={draft}
             disabled={disabled}
-            aria-label={t(`${label} : valeur exacte`, `${label}: exact value`)}
+            aria-label={t(
+              `${label} : valeur exacte`,
+              `${label}: exact value`,
+              `${label}: giá trị chính xác`,
+            )}
             onFocus={() => {
               editing.current = true;
             }}
@@ -394,7 +422,11 @@ function TimeSetting({
             value={draft}
             placeholder={value === null ? "∞" : undefined}
             disabled={disabled}
-            aria-label={t(`${label} : valeur exacte`, `${label}: exact value`)}
+            aria-label={t(
+              `${label} : valeur exacte`,
+              `${label}: exact value`,
+              `${label}: giá trị chính xác`,
+            )}
             onFocus={() => {
               editing.current = true;
             }}
@@ -536,7 +568,7 @@ export function RoomSettings({
       <fieldset className="room-settings-rules">
         <legend>{t("Règles personnalisées", "Custom rules")}</legend>
         <div className="room-settings-toggles">
-          {TOGGLES.map(([key, fr, en]) => (
+          {TOGGLES.map(([key, fr, en, vi]) => (
             <div className="room-setting-toggle-row" key={key}>
               <label className="room-setting-toggle">
                 <input
@@ -547,7 +579,7 @@ export function RoomSettings({
                     update({ [key]: event.currentTarget.checked })
                   }
                 />
-                <span>{t(fr, en)}</span>
+                <span>{t(fr, en, vi)}</span>
               </label>
             </div>
           ))}
@@ -607,12 +639,14 @@ export function RoomSettings({
                 {t(
                   `Avoir le patrimoine le plus élevé après ${config.timeLimitMinutes} min : argent + valeur investie dans les propriétés.`,
                   `Have the highest net worth after ${config.timeLimitMinutes} min: cash + invested property value.`,
+                  `Có tổng tài sản cao nhất sau ${config.timeLimitMinutes} phút: tiền mặt + giá trị đầu tư vào tài sản.`,
                 )}
               </li>
               <li>
                 {t(
                   `Si la limite de ${config.roundLimit} tours de table est atteinte avant, le patrimoine le plus élevé gagne.`,
                   `If the ${config.roundLimit}-round limit is reached first, highest net worth wins.`,
+                  `Nếu chạm giới hạn ${config.roundLimit} vòng trước, người có tổng tài sản cao nhất thắng.`,
                 )}
               </li>
             </>

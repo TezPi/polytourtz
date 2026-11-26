@@ -70,8 +70,39 @@ const ENGLISH_CARD_NAMES: Record<ChanceCard, string> = {
   Gift: "Gift",
   "Roll Again": "Roll again",
 };
+const VIETNAMESE_CARD_NAMES: Record<ChanceCard, string> = {
+  "Grand Tour": "Du ngoạn lớn",
+  Stranded: "Mắc kẹt ngoài đảo",
+  "Jet Set": "Vé bay hạng sang",
+  "Stadium Call": "Triệu tập Giải đấu",
+  Windfall: "Trúng mánh",
+  "Parking Fine": "Phạt đỗ xe",
+  Birthday: "Mừng sinh nhật",
+  Audit: "Kiểm tra thuế",
+  "Guardian Angel": "Thiên thần hộ mệnh",
+  Coupon: "Phiếu giảm giá",
+  Earthquake: "Động đất",
+  "Land Swap": "Đổi đất",
+  Detour: "Đi đường vòng",
+  Contractor: "Nhà thầu xây dựng",
+  "Rescue Boat": "Tàu cứu hộ",
+  Escape: "Thẻ thoát đảo",
+  Charity: "Làm từ thiện",
+  Tailwind: "Thuận buồm xuôi gió",
+  "Power Cut": "Cúp điện",
+  "Forced Sale": "Ép bán tài sản",
+  Shield: "Khiên bảo vệ",
+  Patron: "Mạnh thường quân",
+  "Fan Trip": "Chuyến đi cổ vũ",
+  Gift: "Quà tặng",
+  "Roll Again": "Tung lại",
+};
 export function cardName(card: ChanceCard): string {
-  return t(CARD_NAMES[card], ENGLISH_CARD_NAMES[card]);
+  return t(
+    CARD_NAMES[card],
+    ENGLISH_CARD_NAMES[card],
+    VIETNAMESE_CARD_NAMES[card],
+  );
 }
 
 /** Extra rules for reference browsing, without exposing the private deck order. */
@@ -112,6 +143,7 @@ export function describeChanceCardDetails(
         t(
           `Ce transfert termine votre tour, sans salaire ni tour complet. La traversée coûte ${money(rules.islandReleaseFee)} ; vous êtes aussi libéré après ${rules.islandMaxFailedEscapes} tentatives de double ratées.${config.escapeCard === true ? " Une carte d’évasion permet aussi de repartir sans payer." : ""}`,
           `This transfer ends your turn, without salary or lap credit. The fare is ${money(rules.islandReleaseFee)}; you are also released after ${rules.islandMaxFailedEscapes} failed doubles attempts.${config.escapeCard === true ? " An escape card also lets you leave without paying." : ""}`,
+          `Chuyển ra đảo sẽ kết thúc lượt ngay, không nhận lương và không tính vòng. Phí rời đảo là ${money(rules.islandReleaseFee)}; bạn cũng được tự do sau ${rules.islandMaxFailedEscapes} lần tung đôi trượt.${config.escapeCard === true ? " Thẻ thoát đảo giúp rời đảo miễn phí." : ""}`,
         ),
       ];
     case "Jet Set":
@@ -119,6 +151,7 @@ export function describeChanceCardDetails(
         t(
           `Le trajet suit le sens du jeu : franchir le départ rapporte ${money(config.startSalary)} et compte un tour. Au prochain tour, un vol coûte ${money(ECONOMY.worldTourFee)} ; vous pouvez aussi lancer les dés normalement.`,
           `Move clockwise: passing Start pays ${money(config.startSalary)} and counts a lap. On your next turn, a flight costs ${money(ECONOMY.worldTourFee)}; you may also roll normally.`,
+          `Đi theo chiều kim đồng hồ: qua Xuất phát nhận ${money(config.startSalary)} và tính một vòng. Lượt sau, vé bay tốn ${money(ECONOMY.worldTourFee)}; bạn cũng có thể tung xúc xắc bình thường.`,
         ),
         rules.travelToFreeProperties
           ? worldTourRule(config) === "free-and-own"
@@ -140,6 +173,7 @@ export function describeChanceCardDetails(
         t(
           `Le trajet suit le sens du jeu ; franchir le départ rapporte ${money(config.startSalary)} et compte un tour.`,
           `Move clockwise; passing Start pays ${money(config.startSalary)} and counts a lap.`,
+          `Đi xuôi chiều bàn cờ; đi qua ô Xuất phát nhận ${money(config.startSalary)} và tính một vòng.`,
         ),
         rules.championshipPersists
           ? t(
@@ -149,6 +183,7 @@ export function describeChanceCardDetails(
           : t(
               `Organisez gratuitement le championnat si vous avez une ville éligible. Le déplacer remet le multiplicateur à ×${CHANCE_AMOUNTS.initialHostMultiplier} ; un changement de propriétaire l’annule.`,
               `Host for free if you have an eligible city. Moving it resets the multiplier to ×${CHANCE_AMOUNTS.initialHostMultiplier}; an ownership change clears it.`,
+              `Đăng cai Giải đấu miễn phí nếu bạn có thành phố hợp lệ. Di chuyển giải sẽ đặt lại hệ số về ×${CHANCE_AMOUNTS.initialHostMultiplier}; đổi chủ sẽ mất giải đấu.`,
             ),
         t(
           "Sans ville éligible, vous rejoignez tout de même le championnat, mais ne pouvez pas l’organiser.",
@@ -177,6 +212,7 @@ export function describeChanceCardDetails(
             t(
               `Le trajet suit le sens du jeu : franchir le départ rapporte ${money(config.startSalary)} et compte un tour. Le centre des impôts prélève ensuite ${ECONOMY.taxPercent} % de la valeur de vos propriétés.`,
               `Move clockwise: passing Start pays ${money(config.startSalary)} and counts a lap. The Tax office then charges ${ECONOMY.taxPercent}% of your properties’ value.`,
+              `Đi theo chiều kim đồng hồ: qua Xuất phát nhận ${money(config.startSalary)} và tính một vòng. Sau đó Sở thuế thu ${ECONOMY.taxPercent}% giá trị tài sản của bạn.`,
             ),
           ]
         : [
@@ -215,6 +251,7 @@ export function describeChanceCardDetails(
         t(
           `Choisissez une propriété adverse, plages comprises. Son propriétaire la revend à la banque pour ${sale} % de sa valeur. Un hôtel perd seulement son dernier niveau, remboursé de la même façon.`,
           `Choose an opponent’s property, beaches included. Its owner sells it to the bank for ${sale}% of its value. A Hotel only loses its top level, refunded the same way.`,
+          `Chọn một tài sản của đối thủ (gồm cả bãi biển). Chủ sở hữu phải bán lại cho ngân hàng với giá ${sale}% giá trị. Khách sạn chỉ mất cấp cao nhất và được hoàn tiền tương ứng.`,
         ),
         shielded,
         noTarget,
@@ -241,6 +278,7 @@ export function describeChanceCardDetails(
         t(
           `Le trajet suit le sens du jeu ; franchir le départ rapporte ${money(config.startSalary)}. Payez le loyer de la ville hôte si elle ne vous appartient pas. Sans championnat organisé, la carte n’a aucun effet. Cette carte est rare.`,
           `Move clockwise; passing Start pays ${money(config.startSalary)}. Pay the host city’s rent unless you own it. With no championship hosted, the card has no effect. This card is rare.`,
+          `Đi theo chiều kim đồng hồ; qua Xuất phát nhận ${money(config.startSalary)}. Trả tiền thuê tại thành phố đăng cai Giải đấu nếu không phải của bạn. Thẻ này rất hiếm.`,
         ),
       ];
     case "Gift":
@@ -287,6 +325,7 @@ export function describeChanceCardDetails(
         t(
           `Un dé décide du nombre de cases, de 1 à 6. Franchir le départ rapporte ${money(config.startSalary)} et compte un tour. Ce déplacement ne donne pas de lancer supplémentaire sur un double.`,
           `A die decides how many spaces, from 1 to 6. Passing Start pays ${money(config.startSalary)} and counts a lap. This move does not grant another roll for doubles.`,
+          `Một viên xúc xắc quyết định số bước từ 1 đến 6. Qua Xuất phát nhận ${money(config.startSalary)} và tính một vòng. Không thưởng lượt tung đôi.`,
         ),
       ];
     case "Power Cut":
@@ -294,6 +333,7 @@ export function describeChanceCardDetails(
         t(
           `Choisissez une ville adverse, hôtels compris. Elle ne rapporte aucun loyer tant que son propriétaire n’a pas franchi le départ ${CHANCE_AMOUNTS.powerCutLaps} fois. Un nouveau propriétaire rétablit le courant ; les plages sont exclues.`,
           `Choose an opponent’s city, Hotels included. It earns no rent until its owner has passed Start ${CHANCE_AMOUNTS.powerCutLaps} times. A new owner restores the power; beaches are excluded.`,
+          `Chọn một thành phố của đối thủ (gồm cả Khách sạn). Thành phố này mất tiền thuê cho tới khi chủ sở hữu đi qua Xuất phát ${CHANCE_AMOUNTS.powerCutLaps} lần. Chủ mới sẽ có điện lại.`,
         ),
         shielded,
         noTarget,
@@ -308,6 +348,7 @@ export function describeChanceCardDetails(
           : t(
               `Avant votre premier tour complet, la limite est de ${rules.firstLapHouseCap} maisons. Après un tour complet, cette carte peut offrir l’hôtel sans attendre un retour sur la ville.`,
               `Before your first completed lap, the limit is ${rules.firstLapHouseCap} houses. After a lap, this card can grant a Hotel without waiting to revisit the city.`,
+              `Trước khi đi hết vòng đầu tiên, giới hạn là ${rules.firstLapHouseCap} nhà. Sau một vòng, thẻ này có thể nâng lên Khách sạn ngay mà không cần quay lại thành phố.`,
             ),
         t(
           "Les plages, les hôtels et les monuments ne sont pas des cibles éligibles.",
@@ -411,6 +452,7 @@ export function describeChanceCard(
         text: t(
           `Rejoignez le Départ. Vous vous y arrêtez, donc le salaire versé est de ${money(arrivalSalary(config))}.`,
           `Move to Start. You land on it, so the salary paid is ${money(arrivalSalary(config))}.`,
+          `Di chuyển về ô Xuất phát. Vì dừng đúng ô này nên bạn nhận ${money(arrivalSalary(config))}.`,
         ),
       };
     case "Stranded":
@@ -422,6 +464,7 @@ export function describeChanceCard(
         text: t(
           `Rejoignez l’Île paisible. Repartez avec un double, en payant la traversée${config.escapeCard === true ? ", avec une carte d’évasion" : ""} ou grâce au bateau de secours.`,
           `Move to the Island. Leave by rolling doubles, paying the fare${config.escapeCard === true ? ", using an escape card" : ""} or when the rescue boat calls.`,
+          `Ra Đảo hoang. Thoát đảo bằng cách tung đôi, trả phí${config.escapeCard === true ? ", dùng thẻ thoát đảo" : ""} hoặc nhờ tàu cứu hộ.`,
         ),
       };
     case "Jet Set":
@@ -445,10 +488,12 @@ export function describeChanceCard(
           ? t(
               `Rejoignez le Championnat. Organisez-le dans une de vos villes : ${money(rules.championshipFee)} pour le déplacer, gratuit pour le renouveler. Chaque édition ajoute ×1 au loyer, jusqu’à ×${rules.maxHostMultiplier}.`,
               `Move to the Championship. Host it in one of your cities: ${money(rules.championshipFee)} to move it, free to renew it. Each edition adds ×1 to the rent, up to ×${rules.maxHostMultiplier}.`,
+              `Di chuyển đến Giải vô địch. Đăng cai tại một trong các thành phố của bạn: ${money(rules.championshipFee)} để chuyển địa điểm, miễn phí khi gia hạn. Mỗi kỳ cộng thêm ×1 tiền thuê, tối đa ×${rules.maxHostMultiplier}.`,
             )
           : t(
               `Rejoignez le Championnat. Une ville éligible, hors monuments, peut l’accueillir : son loyer sera multiplié jusqu’à ×${rules.maxHostMultiplier}.`,
               `Move to the Championship. An eligible city without a landmark can host it, multiplying its rent up to ×${rules.maxHostMultiplier}.`,
+              `Di chuyển đến Giải vô địch. Một thành phố đủ điều kiện không có công trình biểu tượng có thể đăng cai, nhân tiền thuê lên tối đa ×${rules.maxHostMultiplier}.`,
             ),
       };
     case "Windfall":
@@ -458,6 +503,7 @@ export function describeChanceCard(
         short: t(
           `Recevez ${money(CHANCE_AMOUNTS.windfall)} de la banque.`,
           `Collect ${money(CHANCE_AMOUNTS.windfall)} from the bank.`,
+          `Nhận ${money(CHANCE_AMOUNTS.windfall)} từ ngân hàng.`,
         ),
         text: t(
           "La banque vous verse cette somme.",
@@ -472,6 +518,7 @@ export function describeChanceCard(
         short: t(
           `Payez ${money(CHANCE_AMOUNTS.fine)}.`,
           `Pay ${money(CHANCE_AMOUNTS.fine)}.`,
+          `Trả ${money(CHANCE_AMOUNTS.fine)}.`,
         ),
         text: t(
           "Réglez cette amende de stationnement à la banque.",
@@ -484,10 +531,12 @@ export function describeChanceCard(
         badge: t(
           `${money(CHANCE_AMOUNTS.birthday)} par adversaire`,
           `${money(CHANCE_AMOUNTS.birthday)} from each opponent`,
+          `${money(CHANCE_AMOUNTS.birthday)} từ mỗi đối thủ`,
         ),
         short: t(
           `Recevez ${money(CHANCE_AMOUNTS.birthday)} de chaque adversaire.`,
           `Collect ${money(CHANCE_AMOUNTS.birthday)} from each opponent.`,
+          `Nhận ${money(CHANCE_AMOUNTS.birthday)} từ mỗi đối thủ.`,
         ),
         text: t(
           "Chaque adversaire encore en jeu vous offre cette somme, selon les règles de cadeaux de la salle.",
@@ -512,10 +561,12 @@ export function describeChanceCard(
         short: t(
           `Payez ${CHANCE_AMOUNTS.auditPercent} % de votre cash.`,
           `Pay ${CHANCE_AMOUNTS.auditPercent}% of your cash.`,
+          `Nộp ${CHANCE_AMOUNTS.auditPercent}% tiền mặt của bạn.`,
         ),
         badge: t(
           `${CHANCE_AMOUNTS.auditPercent} % de votre cash`,
           `${CHANCE_AMOUNTS.auditPercent}% of your cash`,
+          `${CHANCE_AMOUNTS.auditPercent}% tiền mặt`,
         ),
         text: t(
           "Payez à la banque cette part de votre trésorerie positive.",
@@ -593,8 +644,16 @@ export function describeChanceCard(
       return {
         ...base,
         tone: "travel",
-        badge: t(`Reculez de ${back} cases`, `Move back ${back} spaces`),
-        short: t(`Reculez de ${back} cases.`, `Move back ${back} spaces.`),
+        badge: t(
+          `Reculez de ${back} cases`,
+          `Move back ${back} spaces`,
+          `Lùi ${back} ô`,
+        ),
+        short: t(
+          `Reculez de ${back} cases.`,
+          `Move back ${back} spaces.`,
+          `Lùi lại ${back} ô.`,
+        ),
         text: t(
           "Reculez, puis appliquez l’effet de votre nouvelle case.",
           "Move back, then resolve the space you land on.",
@@ -605,8 +664,16 @@ export function describeChanceCard(
       return {
         ...base,
         tone: "travel",
-        badge: t(`Avancez de ${steps} cases`, `Move forward ${steps} spaces`),
-        short: t(`Avancez de ${steps} cases.`, `Move forward ${steps} spaces.`),
+        badge: t(
+          `Avancez de ${steps} cases`,
+          `Move forward ${steps} spaces`,
+          `Tiến ${steps} ô`,
+        ),
+        short: t(
+          `Avancez de ${steps} cases.`,
+          `Move forward ${steps} spaces.`,
+          `Tiến lên ${steps} ô.`,
+        ),
         text: t(
           "Avancez, puis appliquez l’effet de votre nouvelle case.",
           "Move forward, then resolve the space you land on.",
@@ -702,6 +769,7 @@ export function describeChanceCard(
         badge: t(
           `Aucun loyer pendant ${CHANCE_AMOUNTS.powerCutLaps} tours`,
           `No rent for ${CHANCE_AMOUNTS.powerCutLaps} laps`,
+          `Mất tiền thuê trong ${CHANCE_AMOUNTS.powerCutLaps} vòng`,
         ),
         short: t(
           "Coupez le courant d’une ville adverse.",
@@ -710,6 +778,7 @@ export function describeChanceCard(
         text: t(
           `Choisissez une ville adverse : elle ne rapporte plus de loyer pendant ${CHANCE_AMOUNTS.powerCutLaps} tours de son propriétaire.`,
           `Choose an opponent’s city: it earns no rent for its owner’s next ${CHANCE_AMOUNTS.powerCutLaps} laps.`,
+          `Chọn một thành phố của đối thủ: không thu được tiền thuê trong ${CHANCE_AMOUNTS.powerCutLaps} vòng tiếp theo của chủ sở hữu.`,
         ),
       };
     case "Contractor":
@@ -758,6 +827,7 @@ export function describeChanceCard(
         short: t(
           `Donnez ${money(CHANCE_AMOUNTS.charity)} à l’adversaire le plus pauvre.`,
           `Give ${money(CHANCE_AMOUNTS.charity)} to the poorest opponent.`,
+          `Tặng ${money(CHANCE_AMOUNTS.charity)} cho đối thủ ít tiền nhất.`,
         ),
         text: t(
           "Vous offrez cette somme à l’adversaire encore en jeu qui possède le moins de cash, selon les règles de cadeaux de la salle.",

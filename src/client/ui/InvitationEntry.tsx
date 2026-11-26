@@ -1,7 +1,15 @@
 import { useEffect, useRef } from "react";
+import type { PlayerCosmetics } from "../../shared/engine/index.js";
 import { translate as t } from "../i18n.js";
 import ActionButton from "./ActionButton.js";
+import {
+  eyewearLabel,
+  gearLabel,
+  hatLabel,
+  skinLabel,
+} from "./cosmetics-store.js";
 import Icon from "./Icon.js";
+import PlayerAvatar from "./PlayerAvatar.js";
 
 export default function InvitationEntry({
   name,
@@ -10,6 +18,8 @@ export default function InvitationEntry({
   loading,
   error,
   invalid,
+  cosmetics,
+  onCustomize,
 }: {
   name: string;
   onName: (name: string) => void;
@@ -17,6 +27,8 @@ export default function InvitationEntry({
   loading: boolean;
   error: string | null;
   invalid: boolean;
+  cosmetics?: PlayerCosmetics;
+  onCustomize?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -67,6 +79,38 @@ export default function InvitationEntry({
               aria-describedby={error ? "invitation-error" : undefined}
               onChange={(event) => onName(event.target.value)}
             />
+            {cosmetics && onCustomize && (
+              <button
+                type="button"
+                className="customize-home-trigger"
+                disabled={loading}
+                onClick={onCustomize}
+              >
+                <PlayerAvatar seat={1} cosmetics={cosmetics} />
+                <span className="customize-home-info">
+                  <strong>
+                    {t(
+                      "Personnaliser le pion",
+                      "Customize character",
+                      "Tùy chỉnh nhân vật",
+                    )}
+                  </strong>
+                  <small>
+                    {skinLabel(cosmetics.skin)}
+                    {cosmetics.hat !== "none"
+                      ? ` · ${hatLabel(cosmetics.hat)}`
+                      : ""}
+                    {cosmetics.eyewear !== "none"
+                      ? ` · ${eyewearLabel(cosmetics.eyewear)}`
+                      : ""}
+                    {cosmetics.gear !== "none"
+                      ? ` · ${gearLabel(cosmetics.gear)}`
+                      : ""}
+                  </small>
+                </span>
+                <Icon name="arrow" size={16} />
+              </button>
+            )}
             <ActionButton
               type="submit"
               className="button primary welcome-play"

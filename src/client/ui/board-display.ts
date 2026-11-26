@@ -17,8 +17,15 @@ export const PLAYER_COLORS = [
   "#236cce",
   "#8151b5",
   "#26764c",
+  "#c97b14",
 ] as const;
-export const PLAYER_LABELS = ["Corail", "Océan", "Lavande", "Forêt"] as const;
+export const PLAYER_LABELS = [
+  "Corail",
+  "Océan",
+  "Lavande",
+  "Forêt",
+  "Ambre",
+] as const;
 // Six vivid hues spread around the wheel and two muted concrete tones, so
 // groups stay apart even as the light tints printed on the board. Look-alike
 // pairs (orange and yellow, blue and teal) sit on different sides, yellow
@@ -187,16 +194,98 @@ const LEGACY_ENGLISH_TILE_NAMES = [
   "Osaka",
   "Tokyo",
 ] as const;
+const VIETNAMESE_TILE_NAMES = [
+  "Xuất phát",
+  "Lyon",
+  "Marseille",
+  "Paris",
+  "Seychelles",
+  "Naples",
+  "Milan",
+  "Rome",
+  "Đảo hoang",
+  "Faro",
+  "Porto",
+  "Lisbon",
+  "Cơ hội",
+  "Hamburg",
+  "Maldives",
+  "Berlin",
+  "Giải đấu",
+  "Geneva",
+  "Bora Bora",
+  "Zurich",
+  "Cơ hội",
+  "Chicago",
+  "Los Angeles",
+  "New York",
+  "Du lịch",
+  "Hawaii",
+  "Busan",
+  "Seoul",
+  "Cơ hội",
+  "Osaka",
+  "Thuế",
+  "Tokyo",
+] as const;
+const VIETNAMESE_LEVEL_NAMES = [
+  "Đất trống",
+  "1 nhà",
+  "2 nhà",
+  "3 nhà",
+  "Khách sạn",
+  "Kỳ quan",
+] as const;
+const LEGACY_VIETNAMESE_TILE_NAMES = [
+  "Xuất phát",
+  "Roubaix",
+  "Saint-Étienne",
+  "Cơ hội",
+  "Granada",
+  "French Riviera",
+  "Valencia",
+  "Seville",
+  "Đảo hoang",
+  "Porto",
+  "Lisbon",
+  "Rome",
+  "Síp",
+  "Milan",
+  "Cơ hội",
+  "Berlin",
+  "Giải đấu",
+  "Prague",
+  "Vienna",
+  "Cơ hội",
+  "London",
+  "Dubai",
+  "Montréal",
+  "New York",
+  "Du lịch",
+  "Sydney",
+  "Singapore",
+  "Seoul",
+  "Bali",
+  "Thuế",
+  "Osaka",
+  "Tokyo",
+] as const;
 type BoardConfig = Pick<GameConfig, "boardRule">;
 export function tileName(index: number, config?: BoardConfig): string {
   const legacy = config !== undefined && boardRule(config) === "legacy";
   return translate(
     (legacy ? LEGACY_TILE_NAMES : TILE_NAMES)[index] ?? "",
     (legacy ? LEGACY_ENGLISH_TILE_NAMES : ENGLISH_TILE_NAMES)[index] ?? "",
+    (legacy ? LEGACY_VIETNAMESE_TILE_NAMES : VIETNAMESE_TILE_NAMES)[index] ??
+      "",
   );
 }
 export function levelName(level: number): string {
-  return translate(LEVEL_NAMES[level] ?? "", ENGLISH_LEVEL_NAMES[level] ?? "");
+  return translate(
+    LEVEL_NAMES[level] ?? "",
+    ENGLISH_LEVEL_NAMES[level] ?? "",
+    VIETNAMESE_LEVEL_NAMES[level] ?? "",
+  );
 }
 export const TILE_ICONS: Record<string, string> = {
   start: "↗",
@@ -242,16 +331,23 @@ export function tilePosition(index: number): [number, number] {
   return [-4 * step, (index - 28) * step];
 }
 export function pawnOffset(seat: Seat): [number, number] {
+  if (seat === 4) return [0, 0];
   return [seat % 2 === 0 ? -0.19 : 0.19, seat < 2 ? -0.18 : 0.18];
 }
 /** Exact amount with grouped digits (1 800 000), for balances players track. */
 export function fullMoney(value: number) {
-  return new Intl.NumberFormat(getLocale() === "fr" ? "fr-FR" : "en-GB", {
-    maximumFractionDigits: 0,
-  }).format(value);
+  const locale = getLocale();
+  return new Intl.NumberFormat(
+    locale === "fr" ? "fr-FR" : locale === "vi" ? "vi-VN" : "en-GB",
+    {
+      maximumFractionDigits: 0,
+    },
+  ).format(value);
 }
 export function money(value: number) {
-  const locale = getLocale() === "fr" ? "fr-CH" : "en-GB";
+  const current = getLocale();
+  const locale =
+    current === "fr" ? "fr-CH" : current === "vi" ? "vi-VN" : "en-GB";
   if (Math.abs(value) >= 1_000_000)
     return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value / 1_000_000)} M`;
   if (Math.abs(value) >= 1000)

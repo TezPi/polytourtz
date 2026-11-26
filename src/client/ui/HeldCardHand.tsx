@@ -98,6 +98,7 @@ export default function HeldCardHand({
           aria-label={t(
             `Carte « ${cardName(card)} »`,
             `Card “${cardName(card)}”`,
+            `Thẻ “${cardName(card)}”`,
           )}
           aria-describedby={open?.card === card ? id : undefined}
           onPointerEnter={show(card)}

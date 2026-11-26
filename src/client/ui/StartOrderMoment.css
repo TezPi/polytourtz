@@ -30,7 +30,7 @@
 .start-order-stage {
   position: relative;
   height: 242px;
-  margin: 20px 0 8px;
+  margin: 28px 0 8px;
 }
 .start-order-wheel {
   position: absolute;
@@ -106,6 +106,14 @@
   right: 0;
   bottom: 0;
 }
+.start-order-player[data-seat="4"] {
+  left: 50%;
+  top: -18px;
+  transform: translateX(-50%);
+  width: auto;
+  max-width: 148px;
+  justify-content: center;
+}
 .start-order-player strong,
 .start-order-sequence li > span:last-child {
   min-width: 0;
@@ -139,8 +147,9 @@
 }
 .start-order-sequence {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   min-height: 32px;
   margin: 10px 0 18px;
   padding: 0;
@@ -154,7 +163,7 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
-  max-width: 25%;
+  max-width: 30%;
   font-size: 14px;
 }
 .start-order-sequence .start-order-number {

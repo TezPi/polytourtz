@@ -7,7 +7,13 @@ export const RoomCredentialsSchema = z.object({
   roomCode: RoomCodeSchema,
   // Null for someone placed in the waiting list rather than a seat.
   seat: z
-    .union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])
+    .union([
+      z.literal(0),
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+    ])
     .nullable(),
   token: z.string().min(1),
 });
@@ -66,10 +72,12 @@ function unavailableMessage(status: number): string {
     return translate(
       `Le serveur de jeu est temporairement indisponible (HTTP ${status}). Patientez un instant puis réessayez.`,
       `The game server is temporarily unavailable (HTTP ${status}). Wait a moment and try again.`,
+      `Máy chủ game tạm thời gián đoạn (HTTP ${status}). Đợi một lát rồi thử lại.`,
     );
   return translate(
     `Impossible d’ouvrir la salle (HTTP ${status}). Réessayez.`,
     `Unable to open the room (HTTP ${status}). Try again.`,
+    `Không thể mở phòng (HTTP ${status}). Vui lòng thử lại.`,
   );
 }
 

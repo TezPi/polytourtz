@@ -185,6 +185,11 @@
   top: 16px;
   flex-direction: row-reverse;
 }
+.player-card[data-seat="4"] {
+  right: 16px;
+  top: 118px;
+  flex-direction: row-reverse;
+}
 .player-card[data-seat="3"] {
   right: 16px;
   bottom: 16px;
@@ -230,7 +235,8 @@
   overflow: hidden;
 }
 .player-card[data-seat="2"] .player-card-body,
-.player-card[data-seat="3"] .player-card-body {
+.player-card[data-seat="3"] .player-card-body,
+.player-card[data-seat="4"] .player-card-body {
   margin: 0 -18px 0 0;
   border-radius: 14px 0 0 14px;
 }
@@ -254,7 +260,8 @@
   animation: timer-drain var(--timer-window) linear var(--timer-delay) both;
 }
 .player-card[data-seat="2"] .player-timer-fill,
-.player-card[data-seat="3"] .player-timer-fill {
+.player-card[data-seat="3"] .player-timer-fill,
+.player-card[data-seat="4"] .player-timer-fill {
   transform-origin: right center;
 }
 @keyframes timer-drain {
@@ -281,7 +288,8 @@
 .player-card[data-seat="1"] {
   transform-origin: left top;
 }
-.player-card[data-seat="2"] {
+.player-card[data-seat="2"],
+.player-card[data-seat="4"] {
   transform-origin: right top;
 }
 .player-card[data-seat="3"] {
@@ -303,7 +311,8 @@
   color: #fffaf0;
 }
 .player-card[data-seat="2"] .player-name-row,
-.player-card[data-seat="3"] .player-name-row {
+.player-card[data-seat="3"] .player-name-row,
+.player-card[data-seat="4"] .player-name-row {
   padding: 6px var(--hud-inset) 6px 12px;
 }
 .player-card[data-seat="0"] .player-name-row,
@@ -340,7 +349,8 @@
   letter-spacing: -0.02em;
 }
 .player-card[data-seat="2"] .player-cash,
-.player-card[data-seat="3"] .player-cash {
+.player-card[data-seat="3"] .player-cash,
+.player-card[data-seat="4"] .player-cash {
   padding: 10px var(--hud-inset) 10px 12px;
 }
 .coin-symbol {
@@ -372,7 +382,8 @@
   box-shadow: 0 2px 0 #173b4522;
 }
 .player-card[data-seat="2"] .player-held-cards,
-.player-card[data-seat="3"] .player-held-cards {
+.player-card[data-seat="3"] .player-held-cards,
+.player-card[data-seat="4"] .player-held-cards {
   right: auto;
   left: 12px;
 }
@@ -1768,6 +1779,11 @@ input::placeholder {
   padding: 0;
   list-style: none;
 }
+.lobby-seats > .lobby-seat:nth-child(5):last-child {
+  grid-column: 1 / -1;
+  width: calc(50% - 6px);
+  justify-self: center;
+}
 .lobby-seat {
   position: relative;
   min-height: 138px;
@@ -2470,7 +2486,8 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
     left: 22px;
   }
   .player-card[data-seat="2"],
-  .player-card[data-seat="3"] {
+  .player-card[data-seat="3"],
+  .player-card[data-seat="4"] {
     right: 22px;
   }
   .player-card[data-seat="0"],
@@ -2480,6 +2497,9 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
   .player-card[data-seat="1"],
   .player-card[data-seat="2"] {
     top: 22px;
+  }
+  .player-card[data-seat="4"] {
+    top: 138px;
   }
 }
 
@@ -2508,7 +2528,8 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
     left: 12px;
   }
   .player-card[data-seat="2"],
-  .player-card[data-seat="3"] {
+  .player-card[data-seat="3"],
+  .player-card[data-seat="4"] {
     right: 12px;
   }
   .player-card[data-seat="0"],
@@ -2518,6 +2539,9 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
   .player-card[data-seat="1"],
   .player-card[data-seat="2"] {
     top: 12px;
+  }
+  .player-card[data-seat="4"] {
+    top: 96px;
   }
   .match-topbar {
     top: 12px;
@@ -2648,9 +2672,13 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
   }
   .player-card .player-card-body,
   .player-card[data-seat="2"] .player-card-body,
-  .player-card[data-seat="3"] .player-card-body {
+  .player-card[data-seat="3"] .player-card-body,
+  .player-card[data-seat="4"] .player-card-body {
     margin: 0;
     border-radius: 12px;
+  }
+  .player-card[data-seat="4"] {
+    top: 82px;
   }
   .player-name-row strong {
     font-size: 12px;
@@ -2753,12 +2781,16 @@ button.seat-open:is(:disabled, [aria-disabled="true"]) {
     left: 12px;
   }
   .player-card[data-seat="2"],
-  .player-card[data-seat="3"] {
+  .player-card[data-seat="3"],
+  .player-card[data-seat="4"] {
     right: 12px;
   }
   .player-card[data-seat="1"],
   .player-card[data-seat="2"] {
     top: 92px;
+  }
+  .player-card[data-seat="4"] {
+    top: 154px;
   }
   .player-card[data-seat="0"],
   .player-card[data-seat="3"] {

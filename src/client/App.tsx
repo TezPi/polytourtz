@@ -21,6 +21,7 @@ import {
   chanceDeck,
   decisionWindow,
   getProperty,
+  isDefaultCosmetics,
   legalActions,
   netWorth,
   propertyRefund,
@@ -66,13 +67,23 @@ import {
 import { botDifficultyName } from "./ui/bot-display.js";
 import CardMoment from "./ui/CardMoment.js";
 import Changelog from "./ui/Changelog.js";
+import CharacterCustomizerDialog from "./ui/CharacterCustomizer.js";
 import CityCard from "./ui/CityCard.js";
 import { cardName } from "./ui/chance-display.js";
+import {
+  eyewearLabel,
+  gearLabel,
+  hatLabel,
+  saveOwnCosmetics,
+  skinLabel,
+  useOwnCosmetics,
+} from "./ui/cosmetics-store.js";
 import DecisionPanel from "./ui/DecisionPanel.js";
 import DiceExplanation from "./ui/DiceExplanation.js";
 import HeldCardHand from "./ui/HeldCardHand.js";
 import Icon from "./ui/Icon.js";
 import InvitationEntry from "./ui/InvitationEntry.js";
+import LanguagePicker from "./ui/LanguagePicker.js";
 import LuckCardHelp from "./ui/LuckCardHelp.js";
 import PauseMenu, { type SettingsTab } from "./ui/PauseMenu.js";
 import {
@@ -92,6 +103,30 @@ import "./App.css";
 
 const BoardScene = lazy(() => import("./scene/BoardScene.js"));
 const DEFAULT_CONFIG = RoomConfigSchema.parse({});
+
+async function copyText(text: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall back below for non-secure LAN HTTP contexts.
+    }
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 class SceneBoundary extends Component<
   { children: ReactNode; fallback: ReactNode; onError?: () => void },
   { failed: boolean }
@@ -206,7 +241,11 @@ function MatchResults({
           { "--player-color": PLAYER_COLORS[result.winner] } as CSSProperties
         }
       >
-        <PlayerAvatar seat={result.winner} />
+        <PlayerAvatar
+          seat={result.winner}
+          cosmetics={winner?.cosmetics}
+          control={winner?.control}
+        />
         <span className="winner-trophy" aria-hidden="true">
           <Icon name="trophy" size={31} />
         </span>
@@ -256,6 +295,7 @@ function MatchResults({
           {t(
             `${leaderName ?? "Le chef de salle"} peut ramener tout le monde au salon pour une autre partie.`,
             `${leaderName ?? "The room leader"} can bring everyone back to the lobby for another game.`,
+            `${leaderName ?? "Chủ phòng"} có thể đưa mọi người về phòng chờ để chơi ván mới.`,
           )}
         </p>
       )}
@@ -336,6 +376,7 @@ function BoardFallback({
                 ? t(
                     `Choisir ${tileName(tile.index, boardConfig)} à vendre · ${money(propertyRefund(state, tile.index))}`,
                     `Select ${tileName(tile.index, boardConfig)} to sell · ${money(propertyRefund(state, tile.index))}`,
+                    `Chọn bán ${tileName(tile.index, boardConfig)} · ${money(propertyRefund(state, tile.index))}`,
                   )
                 : undefined
             }
@@ -419,6 +460,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `lance ${event.dice[0]} + ${event.dice[1]} = ${event.dice[0] + event.dice[1]}${event.isDouble ? " · Double !" : ""}`,
             `rolls ${event.dice[0]} + ${event.dice[1]} = ${event.dice[0] + event.dice[1]}${event.isDouble ? " · Doubles!" : ""}`,
+            `tung ra ${event.dice[0]} + ${event.dice[1]} = ${event.dice[0] + event.dice[1]}${event.isDouble ? " · Đôi!" : ""}`,
           )}
         </>,
       );
@@ -430,6 +472,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `achète ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
             `buys ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
+            `mua ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
           )}
         </>,
       );
@@ -441,6 +484,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `construit à ${tileName(event.tile, state.config)} · ${levelName(event.level)}`,
             `builds in ${tileName(event.tile, state.config)} · ${levelName(event.level)}`,
+            `xây tại ${tileName(event.tile, state.config)} · ${levelName(event.level)}`,
           )}
         </>,
       );
@@ -452,6 +496,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `rachète ${tileName(event.tile, state.config)} à`,
             `buys out ${tileName(event.tile, state.config)} from`,
+            `mua lại ${tileName(event.tile, state.config)} từ`,
           )}{" "}
           {name(event.previousOwner)} · {money(event.amount)}
         </>,
@@ -464,6 +509,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `vend ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
             `sells ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
+            `bán ${tileName(event.tile, state.config)} · ${money(event.amount)}`,
           )}
         </>,
       );
@@ -472,7 +518,11 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
         "people",
         <>
           {name(event.seat)}{" "}
-          {t(`paie ${money(event.amount)} à`, `pays ${money(event.amount)} to`)}{" "}
+          {t(
+            `paie ${money(event.amount)} à`,
+            `pays ${money(event.amount)} to`,
+            `trả ${money(event.amount)} cho`,
+          )}{" "}
           {name(event.owner)}
         </>,
       );
@@ -484,6 +534,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `reçoit ${money(event.amount)} au départ`,
             `receives ${money(event.amount)} at Start`,
+            `nhận ${money(event.amount)} tại Xuất phát`,
           )}
         </>,
       );
@@ -495,9 +546,14 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `tire « ${cardName(event.card)} »`,
             `draws “${cardName(event.card)}”`,
+            `rút thẻ “${cardName(event.card)}”`,
           )}
           {event.roll !== undefined &&
-            t(` · dé ${event.roll}`, ` · die ${event.roll}`)}
+            t(
+              ` · dé ${event.roll}`,
+              ` · die ${event.roll}`,
+              ` · xúc xắc ${event.roll}`,
+            )}
         </>,
       );
     case "PropertyDowngraded":
@@ -516,6 +572,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `coupe le courant à ${tileName(event.tile, state.config)}`,
             `cuts the power in ${tileName(event.tile, state.config)}`,
+            `cắt điện tại ${tileName(event.tile, state.config)}`,
           )}{" "}
           ({owner(event.tile)})
         </>,
@@ -528,6 +585,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `protège ${tileName(event.tile, state.config)}`,
             `shields ${tileName(event.tile, state.config)}`,
+            `bảo vệ ${tileName(event.tile, state.config)}`,
           )}
         </>,
       );
@@ -538,6 +596,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `Le bouclier de ${tileName(event.tile, state.config)}`,
             `The shield on ${tileName(event.tile, state.config)}`,
+            `Khiên của ${tileName(event.tile, state.config)}`,
           )}{" "}
           ({owner(event.tile)}){" "}
           {t("bloque l’attaque de", "blocks the attack from")}{" "}
@@ -552,6 +611,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `offre ${tileName(event.tile, state.config)} à`,
             `gives ${tileName(event.tile, state.config)} to`,
+            `tặng ${tileName(event.tile, state.config)} cho`,
           )}{" "}
           {name(event.to)}
         </>,
@@ -564,6 +624,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `échange ${tileName(event.tile, state.config)} contre ${tileName(event.otherTile, state.config)} avec`,
             `swaps ${tileName(event.tile, state.config)} for ${tileName(event.otherTile, state.config)} with`,
+            `đổi ${tileName(event.tile, state.config)} lấy ${tileName(event.otherTile, state.config)} với`,
           )}{" "}
           {name(event.otherSeat)}
         </>,
@@ -576,6 +637,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
           {t(
             `joue « ${cardName(event.card)} »`,
             `plays “${cardName(event.card)}”`,
+            `dùng thẻ “${cardName(event.card)}”`,
           )}
         </>,
       );
@@ -607,6 +669,7 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
             t(
               `Championnat à ${tileName(event.host.tile, state.config)} · loyers ×${event.host.multiplier}`,
               `Championship in ${tileName(event.host.tile, state.config)} · rent ×${event.host.multiplier}`,
+              `Giải đấu tại ${tileName(event.host.tile, state.config)} · tiền thuê ×${event.host.multiplier}`,
             ),
           )
         : null;
@@ -614,12 +677,17 @@ function eventText(event: GameEvent, state: PublicState): ReactNode | null {
       return entry(
         event.from === null || event.to === null ? "bank" : "people",
         <>
-          {event.from === null ? t("La banque", "The bank") : name(event.from)}{" "}
+          {event.from === null
+            ? t("La banque", "The bank", "Ngân hàng")
+            : name(event.from)}{" "}
           {t(
             `verse ${money(event.amount)} à`,
             `pays ${money(event.amount)} to`,
+            `chuyển ${money(event.amount)} cho`,
           )}{" "}
-          {event.to === null ? t("la banque", "the bank") : name(event.to)}
+          {event.to === null
+            ? t("la banque", "the bank", "ngân hàng")
+            : name(event.to)}
         </>,
       );
     case "GameOver":
@@ -672,6 +740,7 @@ function RandomnessPanel({
               {t(
                 `Dernier lancer : ${proof.dice[0]} + ${proof.dice[1]}`,
                 `Last roll: ${proof.dice[0]} + ${proof.dice[1]}`,
+                `Lượt gần nhất: ${proof.dice[0]} + ${proof.dice[1]}`,
               )}
             </p>
           ) : (
@@ -722,6 +791,7 @@ function RandomnessPanel({
               {t(
                 `Dés : ${proof.dice[0]} + ${proof.dice[1]}`,
                 `Dice: ${proof.dice[0]} + ${proof.dice[1]}`,
+                `Xúc xắc: ${proof.dice[0]} + ${proof.dice[1]}`,
               )}{" "}
               ·{" "}
               {proof.verified
@@ -760,11 +830,7 @@ function RandomnessPanel({
             <button
               type="button"
               className="text-button"
-              onClick={() =>
-                void navigator.clipboard.writeText(
-                  JSON.stringify(proof, null, 2),
-                )
-              }
+              onClick={() => void copyText(JSON.stringify(proof, null, 2))}
             >
               {t("Copier la preuve", "Copy proof")}
               <Icon name="copy" size={15} />
@@ -834,8 +900,8 @@ function Help({
       </div>
       <p>
         {t(
-          "Une partie de 2 à 4 joueurs, avec des amis ou des bots.",
-          "Two to four players, with friends or bots.",
+          "Une partie de 2 à 5 joueurs, avec des amis ou des bots.",
+          "Two to five players, with friends or bots.",
         )}
       </p>
       <button
@@ -848,6 +914,7 @@ function Help({
         {t(
           `Voir les ${new Set(chanceDeck(config)).size} cartes Surprise`,
           `View all ${new Set(chanceDeck(config)).size} luck cards`,
+          `Xem tất cả ${new Set(chanceDeck(config)).size} thẻ Cơ hội`,
         )}
         <Icon name="arrow" size={15} />
       </button>
@@ -1403,6 +1470,7 @@ function MatchView({
                 {t(
                   `Manche ${game.round}/${game.config.roundLimit}`,
                   `Round ${game.round}/${game.config.roundLimit}`,
+                  `Vòng ${game.round}/${game.config.roundLimit}`,
                 )}
               </span>
             )}
@@ -1520,6 +1588,7 @@ function MatchView({
               ? t(
                   `Inviter des joueurs · ${askingToJoin} demande${askingToJoin > 1 ? "s" : ""} d’entrée`,
                   `Invite players · ${askingToJoin} asking to join`,
+                  `Mời người chơi · ${askingToJoin} yêu cầu vào phòng`,
                 )
               : t("Inviter des joueurs", "Invite players")
           }
@@ -1579,7 +1648,11 @@ function MatchView({
               animate={{ opacity: player.bankrupt ? 0.7 : 1 }}
               transition={{ duration: reducedMotion ? 0 : 0.2 }}
             >
-              <PlayerAvatar seat={player.seat} />
+              <PlayerAvatar
+                seat={player.seat}
+                cosmetics={player.cosmetics}
+                control={player.control}
+              />
               <div className="player-card-body">
                 <div className="player-name-row">
                   <strong title={player.name}>{player.name}</strong>
@@ -1587,7 +1660,11 @@ function MatchView({
                     <HeldCardHand
                       cards={player.heldCards}
                       config={game.config}
-                      below={player.seat === 1 || player.seat === 2}
+                      below={
+                        player.seat === 1 ||
+                        player.seat === 2 ||
+                        player.seat === 4
+                      }
                     />
                   )}
                   {(mySeats.includes(player.seat) ||
@@ -1619,6 +1696,7 @@ function MatchView({
                   title={t(
                     `Fortune ${money(netWorth(game, player.seat))} · ${player.properties.length} propriété${player.properties.length > 1 ? "s" : ""}`,
                     `Net worth ${money(netWorth(game, player.seat))} · ${player.properties.length} ${player.properties.length === 1 ? "property" : "properties"}`,
+                    `Tổng tài sản ${money(netWorth(game, player.seat))} · ${player.properties.length} tài sản`,
                   )}
                 >
                   <span className="coin-symbol" aria-hidden="true">
@@ -1635,6 +1713,7 @@ function MatchView({
                   aria-label={t(
                     `${player.heldCards.length} carte${player.heldCards.length > 1 ? "s" : ""}`,
                     `${player.heldCards.length} card${player.heldCards.length === 1 ? "" : "s"}`,
+                    `${player.heldCards.length} thẻ`,
                   )}
                 >
                   ×{player.heldCards.length}
@@ -1760,6 +1839,7 @@ function MatchView({
                     ? t(
                         `Vos cartes : ${ownPlayer.heldCards.map(cardName).join(" · ")}`,
                         `Your cards: ${ownPlayer.heldCards.map(cardName).join(" · ")}`,
+                        `Thẻ của bạn: ${ownPlayer.heldCards.map(cardName).join(" · ")}`,
                       )
                     : t(
                         "Toutes les actions récentes de la partie.",
@@ -1856,6 +1936,7 @@ function MatchView({
                     {t(
                       `Chef de salle : ${leaderName ?? "-"}`,
                       `Room leader: ${leaderName ?? "-"}`,
+                      `Chủ phòng: ${leaderName ?? "-"}`,
                     )}
                   </p>
                 )}
@@ -2003,6 +2084,8 @@ function App() {
   // Null follows the active pawn; an explicit inspection stays pinned.
   const [selected, setSelected] = useState<number | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [homeCustomizerOpen, setHomeCustomizerOpen] = useState(false);
+  const ownCosmetics = useOwnCosmetics();
   const [homeSettingsTab, setHomeSettingsTab] = useState<SettingsTab | null>(
     null,
   );
@@ -2035,7 +2118,7 @@ function App() {
   }, [serverConfigKey]);
   const settingsDirty =
     serverConfigKey !== null && JSON.stringify(config) !== serverConfigKey;
-  // Play opens a lobby with three bots; a code joins a friend's room instead.
+  // Play opens a lobby with four bots; a code joins a friend's room instead.
   async function enter(join = false) {
     if (entering.current) return;
     const cleanName = name.trim();
@@ -2067,7 +2150,8 @@ function App() {
         cleanName,
         join ? config : { ...config, randomnessMode: "secure" },
         join ? code : undefined,
-        join ? 0 : 3,
+        join ? 0 : 4,
+        isDefaultCosmetics(ownCosmetics) ? undefined : ownCosmetics,
       );
       try {
         localStorage.setItem("polytour-name", cleanName);
@@ -2112,15 +2196,11 @@ function App() {
   }
   async function copyRoom() {
     if (!credentials) return;
-    try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}/?room=${credentials.roomCode}`,
-      );
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      setCopied(false);
-    }
+    const copiedOk = await copyText(
+      `${window.location.origin}/?room=${credentials.roomCode}`,
+    );
+    setCopied(copiedOk);
+    if (copiedOk) setTimeout(() => setCopied(false), 2500);
   }
   const game = viewState ?? serverState;
   const isGame = credentials && game;
@@ -2167,6 +2247,7 @@ function App() {
             <Logo small={Boolean(isGame)} />
           </span>
           <div className="topbar-right">
+            <LanguagePicker />
             <StreamerToggle enabled={streamer} onChange={changeStreamer} />
             <button
               type="button"
@@ -2215,12 +2296,14 @@ function App() {
               loading={loading}
               error={formError}
               invalid={invalidInvitation}
+              cosmetics={ownCosmetics}
+              onCustomize={() => setHomeCustomizerOpen(true)}
             />
           ) : (
             <div className="welcome-copy">
               <span className="travel-stamp">
                 <Icon name="people" size={17} />
-                {t("4 places · amis ou bots", "4 seats · friends or bots")}
+                {t("5 places · amis ou bots", "5 seats · friends or bots")}
               </span>
               <h1>{t("Nouvelle partie", "New game")}</h1>
               <p className="welcome-intro">
@@ -2244,6 +2327,36 @@ function App() {
                     if (event.key === "Enter") void enter();
                   }}
                 />
+                <button
+                  type="button"
+                  className="customize-home-trigger"
+                  disabled={loading}
+                  onClick={() => setHomeCustomizerOpen(true)}
+                >
+                  <PlayerAvatar seat={0} cosmetics={ownCosmetics} />
+                  <span className="customize-home-info">
+                    <strong>
+                      {t(
+                        "Personnaliser le pion",
+                        "Customize character",
+                        "Tùy chỉnh nhân vật",
+                      )}
+                    </strong>
+                    <small>
+                      {skinLabel(ownCosmetics.skin)}
+                      {ownCosmetics.hat !== "none"
+                        ? ` · ${hatLabel(ownCosmetics.hat)}`
+                        : ""}
+                      {ownCosmetics.eyewear !== "none"
+                        ? ` · ${eyewearLabel(ownCosmetics.eyewear)}`
+                        : ""}
+                      {ownCosmetics.gear !== "none"
+                        ? ` · ${gearLabel(ownCosmetics.gear)}`
+                        : ""}
+                    </small>
+                  </span>
+                  <Icon name="arrow" size={16} />
+                </button>
                 <ActionButton
                   type="button"
                   className="button primary welcome-play"
@@ -2327,6 +2440,7 @@ function App() {
                     selected={null}
                     onSelect={setSelected}
                     preview
+                    previewCosmetics={ownCosmetics}
                     zoom={zoom}
                     viewResetKey={viewResetKey}
                     viewLocked={viewLocked}
@@ -2345,6 +2459,17 @@ function App() {
               </div>
             )}
           </div>
+          <CharacterCustomizerDialog
+            open={homeCustomizerOpen}
+            seat={invitationCode !== null ? 1 : 0}
+            playerName={
+              name.trim() ||
+              t("Votre pion", "Your character", "Nhân vật của bạn")
+            }
+            value={ownCosmetics}
+            onClose={() => setHomeCustomizerOpen(false)}
+            onApply={(next) => saveOwnCosmetics(next)}
+          />
         </section>
       ) : !game ? (
         <section className="room-lobby">
@@ -2356,8 +2481,8 @@ function App() {
             <h1>{t("Joueurs", "Players")}</h1>
             <p className="welcome-intro">
               {t(
-                "De 2 à 4 joueurs. Vos amis prennent la place d’un bot en entrant ce code ; un joueur assis à côté de vous peut jouer sur ce PC.",
-                "2 to 4 players. Friends take a bot’s seat by entering this code; someone next to you can play on this PC.",
+                "De 2 à 5 joueurs. Vos amis prennent la place d’un bot en entrant ce code ; un joueur assis à côté de vous peut jouer sur ce PC.",
+                "2 to 5 players. Friends take a bot’s seat by entering this code; someone next to you can play on this PC.",
               )}
             </p>
             <div className="room-code-block">
@@ -2392,6 +2517,7 @@ function App() {
               onAddLocal={room.addLocal}
               onRemoveLocal={room.removeLocal}
               onTransferHost={room.transferHost}
+              onCosmetics={room.setCosmetics}
             />
             <WaitingRoom
               lobby={room.lobby}
@@ -2421,8 +2547,9 @@ function App() {
                       ? t(
                           `Partie à ${seated} joueurs. Les places libres resteront vides.`,
                           `${seated}-player game. Open seats will stay empty.`,
+                          `Ván ${seated} người chơi. Các chỗ trống sẽ để trống.`,
                         )
-                      : t("Partie à 4 joueurs.", "4-player game.")}
+                      : t("Partie à 5 joueurs.", "5-player game.")}
                 </p>
                 <ActionButton
                   type="button"
@@ -2467,6 +2594,7 @@ function App() {
                 {t(
                   `En attente du démarrage par ${leaderName ?? "le chef de salle"}.`,
                   `Waiting for ${leaderName ?? "the room leader"} to start.`,
+                  `Đang chờ ${leaderName ?? "chủ phòng"} bắt đầu ván.`,
                 )}
               </p>
             )}
@@ -2516,6 +2644,7 @@ function App() {
                   selected={null}
                   onSelect={setSelected}
                   preview
+                  lobbySeats={room.lobby?.seats}
                   zoom={zoom}
                   viewResetKey={viewResetKey}
                   viewLocked={viewLocked}

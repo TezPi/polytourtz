@@ -5,7 +5,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { Action, BotDifficulty, Seat } from "../../shared/engine/index.js";
+import type {
+  Action,
+  BotDifficulty,
+  PlayerCosmetics,
+  Seat,
+} from "../../shared/engine/index.js";
 import type {
   ClientMessage,
   LobbyOp,
@@ -26,6 +31,18 @@ import { parseServerMessage } from "./server-message.js";
 const STORAGE_KEY = "polytour-room-v1";
 export type Connection = "connecting" | "online" | "reconnecting" | "offline";
 
+/** Plain-HTTP LAN origins lack crypto.randomUUID(), so fall back to getRandomValues(). */
+function commandId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function readCredentials(): RoomCredentials | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -44,13 +61,18 @@ export async function enterRoom(
   config?: RoomConfig,
   code?: string,
   bots = 0,
+  cosmetics?: PlayerCosmetics,
 ): Promise<RoomCredentials> {
   let response: Response;
   try {
     response = await fetch(code ? `/api/rooms/${code}/join` : "/api/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(code ? { name } : { name, config, bots }),
+      body: JSON.stringify(
+        code
+          ? { name, ...(cosmetics ? { cosmetics } : {}) }
+          : { name, config, bots, ...(cosmetics ? { cosmetics } : {}) },
+      ),
     });
   } catch {
     throw new Error(
@@ -195,7 +217,7 @@ export function useRoom(credentials: RoomCredentials | null) {
               "The room sent an incompatible response. Refresh the page to return to your seat.",
             ),
           );
-          ws.close(1002, "Invalid room response");
+          ws.close(3002, "Invalid room response");
           return;
         }
         if (!welcomed && message.type !== "welcome") return;
@@ -566,8 +588,7 @@ export function useRoom(credentials: RoomCredentials | null) {
     }
     socket.current.send(JSON.stringify(message));
   }
-  const lobbyOp = (op: LobbyOp) =>
-    send({ type: "lobby", id: crypto.randomUUID(), op });
+  const lobbyOp = (op: LobbyOp) => send({ type: "lobby", id: commandId(), op });
   return {
     lobby,
     you,
@@ -588,7 +609,7 @@ export function useRoom(credentials: RoomCredentials | null) {
     act: (action: Action, seat?: Seat) =>
       send({
         type: "intent",
-        id: crypto.randomUUID(),
+        id: commandId(),
         atSeq: sequence.current,
         action,
         ...(seat === undefined ? {} : { seat }),
@@ -599,9 +620,16 @@ export function useRoom(credentials: RoomCredentials | null) {
     removeBot: (seat: Seat) => lobbyOp({ type: "remove-bot", seat }),
     botDifficulty: (seat: Seat, difficulty: BotDifficulty) =>
       lobbyOp({ type: "bot-difficulty", seat, difficulty }),
-    addLocal: (seat: Seat, name: string) =>
-      lobbyOp({ type: "add-local", seat, name }),
+    addLocal: (seat: Seat, name: string, cosmetics?: PlayerCosmetics) =>
+      lobbyOp({
+        type: "add-local",
+        seat,
+        name,
+        ...(cosmetics ? { cosmetics } : {}),
+      }),
     removeLocal: (seat: Seat) => lobbyOp({ type: "remove-local", seat }),
+    setCosmetics: (seat: Seat, cosmetics: PlayerCosmetics) =>
+      lobbyOp({ type: "cosmetics", seat, cosmetics }),
     transferHost: (seat: Seat) => lobbyOp({ type: "transfer-host", seat }),
     lock: (locked: boolean) => lobbyOp({ type: "lock", locked }),
     admit: (member: string) => lobbyOp({ type: "admit", member }),

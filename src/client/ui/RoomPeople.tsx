@@ -1,16 +1,23 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { BotDifficulty, Seat } from "../../shared/engine/index.js";
+import {
+  type BotDifficulty,
+  type PlayerCosmetics,
+  resolveCosmetics,
+  type Seat,
+} from "../../shared/engine/index.js";
 import type { LobbyState } from "../../shared/protocol/index.js";
 import { useLocale } from "../i18n.js";
 import ActionButton from "./ActionButton.js";
 import { PLAYER_COLORS } from "./board-display.js";
 import { botDifficultyName, nextBotDifficulty } from "./bot-display.js";
+import CharacterCustomizerDialog from "./CharacterCustomizer.js";
+import { saveOwnCosmetics } from "./cosmetics-store.js";
 import Icon from "./Icon.js";
 import PlayerAvatar from "./PlayerAvatar.js";
 import "./RoomPeople.css";
 
-const SEATS = [0, 1, 2, 3] as const;
+const SEATS = [0, 1, 2, 3, 4] as const;
 
 export { PlayerAvatar };
 
@@ -88,12 +95,17 @@ export function RoomLeaderPicker({
                       ? t(
                           `Nommer ${entry.name} chef de salle`,
                           `Make ${entry.name} the room leader`,
+                          `Chuyển quyền chủ phòng cho ${entry.name}`,
                         )
                       : entry.name
                   }
                   onClick={() => onTransferHost(entry.seat)}
                 >
-                  <PlayerAvatar seat={entry.seat} />
+                  <PlayerAvatar
+                    seat={entry.seat}
+                    cosmetics={entry.cosmetics}
+                    control={entry.control}
+                  />
                   <strong className="room-leader-name" title={entry.name}>
                     {entry.name}
                   </strong>
@@ -136,6 +148,7 @@ export function LobbySeats({
   onAddLocal,
   onRemoveLocal,
   onTransferHost,
+  onCosmetics,
 }: {
   lobby: LobbyState | null;
   you: Seat | null;
@@ -148,10 +161,18 @@ export function LobbySeats({
   onAddLocal: (seat: Seat, name: string) => void;
   onRemoveLocal: (seat: Seat) => void;
   onTransferHost: (seat: Seat) => void;
+  onCosmetics?: (seat: Seat, cosmetics: PlayerCosmetics) => void;
 }) {
   const { t } = useLocale();
   const [naming, setNaming] = useState<Seat | null>(null);
   const [localName, setLocalName] = useState("");
+  const [editingCosmeticsSeat, setEditingCosmeticsSeat] = useState<Seat | null>(
+    null,
+  );
+  const editingPlayer =
+    editingCosmeticsSeat !== null
+      ? lobby?.seats.find((entry) => entry.seat === editingCosmeticsSeat)
+      : undefined;
   const firstOpen = SEATS.find(
     (seat) => !lobby?.seats.find((entry) => entry.seat === seat)?.control,
   );
@@ -168,89 +189,108 @@ export function LobbySeats({
     setLocalName("");
   }
   return (
-    <ul className="lobby-seats">
-      {SEATS.map((seat) => {
-        const player = lobby?.seats.find((item) => item.seat === seat);
-        const style = {
-          "--player-color": PLAYER_COLORS[seat],
-        } as CSSProperties;
-        if (
-          !player?.control &&
-          naming === seat &&
-          seat === firstOpen &&
-          you !== null
-        )
-          return (
-            <li key={seat} className="lobby-seat empty" style={style}>
-              <form
-                className="seat-local-form"
-                onSubmit={(event) => addLocal(event, seat)}
-              >
-                <label htmlFor={`local-player-${seat}`}>
-                  {t("Joueur sur ce PC", "Player on this PC")}
-                </label>
-                <input
-                  id={`local-player-${seat}`}
-                  value={localName}
-                  maxLength={24}
-                  // biome-ignore lint/a11y/noAutofocus: the field is the only control of the form the player just opened.
-                  autoFocus
-                  autoComplete="off"
-                  placeholder={t("Son pseudo", "Their nickname")}
-                  onChange={(event) => setLocalName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setNaming(null);
-                  }}
-                />
-                <div>
-                  <ActionButton
-                    type="submit"
-                    className="button primary"
-                    disabled={disabled || !localName.trim()}
-                    disabledReason={
-                      disabled
-                        ? t(
-                            "En attente de la connexion au serveur.",
-                            "Waiting for the server connection.",
-                          )
-                        : t(
-                            "Saisissez le nom du joueur.",
-                            "Enter the player’s name.",
-                          )
-                    }
-                  >
-                    {t("Ajouter", "Add")}
-                  </ActionButton>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setNaming(null)}
-                  >
-                    {t("Annuler", "Cancel")}
-                  </button>
-                </div>
-              </form>
-            </li>
-          );
-        if (!player?.control)
-          return (
-            <li key={seat} className="lobby-seat empty" style={style}>
-              <div className="seat-open">
-                {you === null ? (
-                  <span className="seat-plus seat-color" aria-hidden="true" />
-                ) : (
-                  <span className="seat-plus" aria-hidden="true">
-                    +
-                  </span>
-                )}
-                <strong>{t("Place libre", "Open seat")}</strong>
-                {you === null ? (
-                  <span>
-                    {t("En attente d’un joueur", "Waiting for a player")}
-                  </span>
-                ) : (
-                  <div className="seat-choices">
-                    {leader && (
+    <>
+      <ul className="lobby-seats">
+        {SEATS.map((seat) => {
+          const player = lobby?.seats.find((item) => item.seat === seat);
+          const style = {
+            "--player-color": PLAYER_COLORS[seat],
+          } as CSSProperties;
+          if (
+            !player?.control &&
+            naming === seat &&
+            seat === firstOpen &&
+            you !== null
+          )
+            return (
+              <li key={seat} className="lobby-seat empty" style={style}>
+                <form
+                  className="seat-local-form"
+                  onSubmit={(event) => addLocal(event, seat)}
+                >
+                  <label htmlFor={`local-player-${seat}`}>
+                    {t("Joueur sur ce PC", "Player on this PC")}
+                  </label>
+                  <input
+                    id={`local-player-${seat}`}
+                    value={localName}
+                    maxLength={24}
+                    // biome-ignore lint/a11y/noAutofocus: the field is the only control of the form the player just opened.
+                    autoFocus
+                    autoComplete="off"
+                    placeholder={t("Son pseudo", "Their nickname")}
+                    onChange={(event) => setLocalName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setNaming(null);
+                    }}
+                  />
+                  <div>
+                    <ActionButton
+                      type="submit"
+                      className="button primary"
+                      disabled={disabled || !localName.trim()}
+                      disabledReason={
+                        disabled
+                          ? t(
+                              "En attente de la connexion au serveur.",
+                              "Waiting for the server connection.",
+                            )
+                          : t(
+                              "Saisissez le nom du joueur.",
+                              "Enter the player’s name.",
+                            )
+                      }
+                    >
+                      {t("Ajouter", "Add")}
+                    </ActionButton>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setNaming(null)}
+                    >
+                      {t("Annuler", "Cancel")}
+                    </button>
+                  </div>
+                </form>
+              </li>
+            );
+          if (!player?.control)
+            return (
+              <li key={seat} className="lobby-seat empty" style={style}>
+                <div className="seat-open">
+                  {you === null ? (
+                    <span className="seat-plus seat-color" aria-hidden="true" />
+                  ) : (
+                    <span className="seat-plus" aria-hidden="true">
+                      +
+                    </span>
+                  )}
+                  <strong>{t("Place libre", "Open seat")}</strong>
+                  {you === null ? (
+                    <span>
+                      {t("En attente d’un joueur", "Waiting for a player")}
+                    </span>
+                  ) : (
+                    <div className="seat-choices">
+                      {leader && (
+                        <ActionButton
+                          type="button"
+                          className="seat-choice"
+                          disabled={disabled || seat !== firstOpen}
+                          disabledReason={
+                            seat !== firstOpen ? orderReason : undefined
+                          }
+                          aria-label={t(
+                            `Ajouter un bot à la place ${seat + 1}`,
+                            `Add a bot to seat ${seat + 1}`,
+                            `Thêm bot vào chỗ ${seat + 1}`,
+                          )}
+                          onClick={() => onAddBot(seat)}
+                        >
+                          <Icon name="bot" size={16} />
+                          Bot
+                        </ActionButton>
+                      )}
                       <ActionButton
                         type="button"
                         className="seat-choice"
@@ -259,154 +299,191 @@ export function LobbySeats({
                           seat !== firstOpen ? orderReason : undefined
                         }
                         aria-label={t(
-                          `Ajouter un bot à la place ${seat + 1}`,
-                          `Add a bot to seat ${seat + 1}`,
+                          `Ajouter un joueur sur ce PC à la place ${seat + 1}`,
+                          `Add a player on this PC to seat ${seat + 1}`,
+                          `Thêm người chơi chung máy vào chỗ ${seat + 1}`,
                         )}
-                        onClick={() => onAddBot(seat)}
+                        onClick={() => {
+                          setLocalName("");
+                          setNaming(seat);
+                        }}
                       >
-                        <Icon name="bot" size={16} />
-                        Bot
+                        <Icon name="screen" size={16} />
+                        {t("Sur ce PC", "On this PC")}
                       </ActionButton>
-                    )}
-                    <ActionButton
-                      type="button"
-                      className="seat-choice"
-                      disabled={disabled || seat !== firstOpen}
-                      disabledReason={
-                        seat !== firstOpen ? orderReason : undefined
-                      }
-                      aria-label={t(
-                        `Ajouter un joueur sur ce PC à la place ${seat + 1}`,
-                        `Add a player on this PC to seat ${seat + 1}`,
-                      )}
-                      onClick={() => {
-                        setLocalName("");
-                        setNaming(seat);
-                      }}
-                    >
-                      <Icon name="screen" size={16} />
-                      {t("Sur ce PC", "On this PC")}
-                    </ActionButton>
-                  </div>
-                )}
-              </div>
-            </li>
-          );
-        const local = player.controller !== null;
-        const controllerName = lobby?.seats.find(
-          (entry) => entry.seat === player.controller,
-        )?.name;
-        const removable =
-          (leader && player.control === "bot") ||
-          (local && (leader || player.controller === you));
-        const difficulty =
-          player.botDifficulty ?? lobby?.config.botDifficulty ?? "medium";
-        const nextDifficulty = nextBotDifficulty(difficulty);
-        const currentLevel = botDifficultyName(difficulty);
-        const nextLevel = botDifficultyName(nextDifficulty);
-        return (
-          <li
-            key={seat}
-            className={`lobby-seat filled ${player.control}`}
-            data-local={local || undefined}
-            data-seat={seat}
-            style={style}
-          >
-            <PlayerAvatar seat={seat} />
-            <strong>{player.name}</strong>
-            {player.control === "bot" ? (
-              <ActionButton
-                type="button"
-                className="seat-status seat-bot-difficulty"
-                aria-label={t(
-                  `${player.name} : Bot · ${currentLevel}. Passer à ${nextLevel}`,
-                  `${player.name}: Bot · ${currentLevel}. Switch to ${nextLevel}`,
-                )}
-                disabled={disabled || pending || !leader}
-                disabledReason={
-                  !leader
-                    ? t(
-                        "Seul le chef de salle peut changer le niveau de ce bot.",
-                        "Only the room leader can change this bot's level.",
-                      )
-                    : pending
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          const local = player.controller !== null;
+          const controllerName = lobby?.seats.find(
+            (entry) => entry.seat === player.controller,
+          )?.name;
+          const removable =
+            (leader && player.control === "bot") ||
+            (local && (leader || player.controller === you));
+          const customizable =
+            Boolean(onCosmetics) &&
+            (seat === you ||
+              player.controller === you ||
+              (leader && player.control === "bot"));
+          const difficulty =
+            player.botDifficulty ?? lobby?.config.botDifficulty ?? "medium";
+          const nextDifficulty = nextBotDifficulty(difficulty);
+          const currentLevel = botDifficultyName(difficulty);
+          const nextLevel = botDifficultyName(nextDifficulty);
+          return (
+            <li
+              key={seat}
+              className={`lobby-seat filled ${player.control}`}
+              data-local={local || undefined}
+              data-seat={seat}
+              style={style}
+            >
+              <PlayerAvatar
+                seat={seat}
+                cosmetics={player.cosmetics}
+                control={player.control}
+              />
+              <strong>{player.name}</strong>
+              {player.control === "bot" ? (
+                <ActionButton
+                  type="button"
+                  className="seat-status seat-bot-difficulty"
+                  aria-label={t(
+                    `${player.name} : Bot · ${currentLevel}. Passer à ${nextLevel}`,
+                    `${player.name}: Bot · ${currentLevel}. Switch to ${nextLevel}`,
+                    `${player.name}: Bot · ${currentLevel}. Chuyển sang ${nextLevel}`,
+                  )}
+                  disabled={disabled || pending || !leader}
+                  disabledReason={
+                    !leader
                       ? t(
-                          "En attente de confirmation.",
-                          "Waiting for confirmation.",
+                          "Seul le chef de salle peut changer le niveau de ce bot.",
+                          "Only the room leader can change this bot's level.",
+                        )
+                      : pending
+                        ? t(
+                            "En attente de confirmation.",
+                            "Waiting for confirmation.",
+                          )
+                        : t(
+                            "Reconnectez-vous pour changer le niveau de ce bot.",
+                            "Reconnect to change this bot's level.",
+                          )
+                  }
+                  onClick={() => onBotDifficulty(seat, nextDifficulty)}
+                >
+                  {`Bot · ${currentLevel}`}
+                  <Icon name="arrow" size={13} />
+                </ActionButton>
+              ) : (
+                <span className="seat-status">
+                  {local
+                    ? player.controller === you
+                      ? t("Sur votre PC", "On your PC")
+                      : t(
+                          `Sur le PC de ${controllerName}`,
+                          `On ${controllerName}’s PC`,
+                          `Trên máy của ${controllerName}`,
+                        )
+                    : !player.online
+                      ? t("Connexion…", "Connecting…")
+                      : seat === you
+                        ? t("Vous", "You")
+                        : t("En ligne", "Online")}
+                </span>
+              )}
+              {seat === lobby?.hostSeat && (
+                <span className="host-label">
+                  <Icon name="crown" size={13} />
+                  {t("Chef", "Leader")}
+                </span>
+              )}
+              {removable && (
+                <ActionButton
+                  type="button"
+                  className="seat-remove"
+                  disabled={disabled}
+                  aria-label={
+                    player.control === "bot"
+                      ? t(
+                          `Retirer le bot ${player.name}`,
+                          `Remove bot ${player.name}`,
+                          `Xóa bot ${player.name}`,
                         )
                       : t(
-                          "Reconnectez-vous pour changer le niveau de ce bot.",
-                          "Reconnect to change this bot's level.",
+                          `Retirer ${player.name}`,
+                          `Remove ${player.name}`,
+                          `Xóa ${player.name}`,
                         )
-                }
-                onClick={() => onBotDifficulty(seat, nextDifficulty)}
-              >
-                {`Bot · ${currentLevel}`}
-                <Icon name="arrow" size={13} />
-              </ActionButton>
-            ) : (
-              <span className="seat-status">
-                {local
-                  ? player.controller === you
-                    ? t("Sur votre PC", "On your PC")
-                    : t(
-                        `Sur le PC de ${controllerName}`,
-                        `On ${controllerName}’s PC`,
-                      )
-                  : !player.online
-                    ? t("Connexion…", "Connecting…")
-                    : seat === you
-                      ? t("Vous", "You")
-                      : t("En ligne", "Online")}
-              </span>
-            )}
-            {seat === lobby?.hostSeat && (
-              <span className="host-label">
-                <Icon name="crown" size={13} />
-                {t("Chef", "Leader")}
-              </span>
-            )}
-            {removable && (
-              <ActionButton
-                type="button"
-                className="seat-remove"
-                disabled={disabled}
-                aria-label={
-                  player.control === "bot"
-                    ? t(
-                        `Retirer le bot ${player.name}`,
-                        `Remove bot ${player.name}`,
-                      )
-                    : t(`Retirer ${player.name}`, `Remove ${player.name}`)
-                }
-                onClick={() =>
-                  player.control === "bot"
-                    ? onRemoveBot(seat)
-                    : onRemoveLocal(seat)
-                }
-              >
-                <Icon name="close" size={15} />
-              </ActionButton>
-            )}
-            {leader && player.control === "human" && !local && seat !== you && (
-              <ActionButton
-                type="button"
-                className="seat-promote"
-                disabled={disabled}
-                aria-label={t(
-                  `Nommer ${player.name} chef de salle`,
-                  `Make ${player.name} the room leader`,
+                  }
+                  onClick={() =>
+                    player.control === "bot"
+                      ? onRemoveBot(seat)
+                      : onRemoveLocal(seat)
+                  }
+                >
+                  <Icon name="close" size={15} />
+                </ActionButton>
+              )}
+              {customizable && (
+                <ActionButton
+                  type="button"
+                  className="seat-customize-btn"
+                  disabled={disabled || pending}
+                  aria-label={t(
+                    `Personnaliser l’apparence de ${player.name}`,
+                    `Customize ${player.name}’s look`,
+                    `Tùy chỉnh ngoại hình cho ${player.name}`,
+                  )}
+                  onClick={() => setEditingCosmeticsSeat(seat)}
+                >
+                  {t("Personnaliser", "Customize", "Tùy chỉnh")}
+                </ActionButton>
+              )}
+              {leader &&
+                player.control === "human" &&
+                !local &&
+                seat !== you && (
+                  <ActionButton
+                    type="button"
+                    className="seat-promote"
+                    disabled={disabled}
+                    aria-label={t(
+                      `Nommer ${player.name} chef de salle`,
+                      `Make ${player.name} the room leader`,
+                      `Chuyển quyền chủ phòng cho ${player.name}`,
+                    )}
+                    onClick={() => onTransferHost(seat)}
+                  >
+                    <Icon name="crown" size={13} />
+                    {t("Nommer chef", "Make leader")}
+                  </ActionButton>
                 )}
-                onClick={() => onTransferHost(seat)}
-              >
-                <Icon name="crown" size={13} />
-                {t("Nommer chef", "Make leader")}
-              </ActionButton>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+            </li>
+          );
+        })}
+      </ul>
+      {editingCosmeticsSeat !== null && editingPlayer?.control && (
+        <CharacterCustomizerDialog
+          open
+          seat={editingCosmeticsSeat}
+          playerName={editingPlayer.name}
+          value={resolveCosmetics(
+            editingCosmeticsSeat,
+            editingPlayer.control,
+            editingPlayer.cosmetics,
+          )}
+          onClose={() => setEditingCosmeticsSeat(null)}
+          onApply={(next) => {
+            if (editingCosmeticsSeat === you) saveOwnCosmetics(next);
+            onCosmetics?.(editingCosmeticsSeat, next);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -466,6 +543,7 @@ export function WaitingRoom({
                       aria-label={t(
                         `Accepter ${member.name}`,
                         `Accept ${member.name}`,
+                        `Chấp nhận ${member.name}`,
                       )}
                       onClick={() => onAdmit(member.id)}
                     >
@@ -478,6 +556,7 @@ export function WaitingRoom({
                       aria-label={t(
                         `Refuser ${member.name}`,
                         `Decline ${member.name}`,
+                        `Từ chối ${member.name}`,
                       )}
                       onClick={() => onDeny(member.id)}
                     >
@@ -495,11 +574,16 @@ export function WaitingRoom({
                         aria-label={t(
                           `Donner la place de ${bot.name} à ${member.name}`,
                           `Give ${bot.name}’s seat to ${member.name}`,
+                          `Nhường chỗ của ${bot.name} cho ${member.name}`,
                         )}
                         onClick={() => onReplaceBot(member.id, bot.seat)}
                       >
                         <Icon name="bot" size={15} />
-                        {t(`Place de ${bot.name}`, `${bot.name}’s seat`)}
+                        {t(
+                          `Place de ${bot.name}`,
+                          `${bot.name}’s seat`,
+                          `Chỗ của ${bot.name}`,
+                        )}
                       </ActionButton>
                     ))}
                     <ActionButton
@@ -509,6 +593,7 @@ export function WaitingRoom({
                       aria-label={t(
                         `Retirer ${member.name} de la salle d’attente`,
                         `Remove ${member.name} from the waiting room`,
+                        `Xóa ${member.name} khỏi phòng chờ`,
                       )}
                       onClick={() => onDeny(member.id)}
                     >
@@ -598,6 +683,7 @@ export function WaitingNotice({
         ? t(
             `${leaderName ?? "Le chef de salle"} doit accepter votre entrée.`,
             `${leaderName ?? "The room leader"} needs to let you in.`,
+            `${leaderName ?? "Chủ phòng"} cần duyệt yêu cầu vào phòng của bạn.`,
           )
         : lobby?.status === "lobby"
           ? t(

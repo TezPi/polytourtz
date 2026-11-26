@@ -13,19 +13,28 @@ const REGIONS_FR: Readonly<Record<string, string>> = {
   "North America": "Amérique du Nord",
   Oceania: "Océanie",
 };
+const REGIONS_VI: Readonly<Record<string, string>> = {
+  Europe: "Châu Âu",
+  Africa: "Châu Phi",
+  Asia: "Châu Á",
+  "Latin America & the Caribbean": "Mỹ Latinh & Caribe",
+  "Middle East": "Trung Đông",
+  "North America": "Bắc Mỹ",
+  Oceania: "Châu Đại Dương",
+};
 
 export function translatedRegion(
   region: string | null,
-  t: (fr: string, en: string) => string,
+  t: (fr: string, en: string, vi?: string) => string,
 ) {
   return region && Object.hasOwn(REGIONS_FR, region)
-    ? t(REGIONS_FR[region] ?? region, region)
+    ? t(REGIONS_FR[region] ?? region, region, REGIONS_VI[region] ?? region)
     : t("Indisponible", "Unavailable");
 }
 
 function socketEntry(
   worker: RoomDiagnostics["worker"],
-  t: (fr: string, en: string) => string,
+  t: (fr: string, en: string, vi?: string) => string,
 ) {
   if (worker.runtime === "local") return t("Local", "Local");
   return worker.cloudflare
@@ -71,6 +80,7 @@ export default function RoomDebug({
     ? t(
         `${samples.length} mesures. Minimum ${minimum} ms, moyenne ${average} ms, maximum ${maximum} ms.`,
         `${samples.length} samples. Minimum ${minimum} ms, average ${average} ms, maximum ${maximum} ms.`,
+        `${samples.length} mẫu đo. Thấp nhất ${minimum} ms, trung bình ${average} ms, cao nhất ${maximum} ms.`,
       )
     : t("Aucune mesure pour le moment.", "No measurements yet.");
   const first = samples[0];
@@ -112,7 +122,9 @@ export default function RoomDebug({
             "Waiting for the room connection.",
           );
   const clock = (at: number) =>
-    new Date(at).toLocaleTimeString(locale === "fr" ? "fr-CH" : "en-GB");
+    new Date(at).toLocaleTimeString(
+      locale === "fr" ? "fr-CH" : locale === "vi" ? "vi-VN" : "en-GB",
+    );
 
   return (
     <>
@@ -126,7 +138,11 @@ export default function RoomDebug({
               {diagnostics.peers.map((peer) => (
                 <li key={peer.seat} data-own={peer.seat === ownSeat}>
                   <span className="room-debug-player">
-                    {t(`Joueur ${peer.seat + 1}`, `Player ${peer.seat + 1}`)}
+                    {t(
+                      `Joueur ${peer.seat + 1}`,
+                      `Player ${peer.seat + 1}`,
+                      `Người chơi ${peer.seat + 1}`,
+                    )}
                     {peer.seat === ownSeat && <small>{t("Vous", "You")}</small>}
                   </span>
                   <span

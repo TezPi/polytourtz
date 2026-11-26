@@ -650,6 +650,7 @@ describe("Authoritative private rooms", () => {
       ["Cam", "human"],
       ["Place libre", null],
       ["Place libre", null],
+      ["Place libre", null],
     ]);
     const rejectedReconnect = await exports.default.fetch(
       new Request(`${origin}/ws/room/${host.roomCode}`, {
@@ -1407,7 +1408,7 @@ describe("Authoritative private rooms", () => {
     inbox = await connect(host);
     expect(
       (await inbox.next("welcome")).lobby.seats
-        .slice(1)
+        .filter((entry) => entry.control === "bot")
         .map((entry) => entry.botDifficulty),
     ).toEqual(levels);
     expect(
@@ -1510,7 +1511,7 @@ describe("Authoritative private rooms", () => {
       restarted?.type === "GameCreated"
         ? restarted.state.players.map((player) => player.botDifficulty)
         : [],
-    ).toEqual([undefined, "easy", "medium", "hard"]);
+    ).toEqual([undefined, "easy", "medium", "hard", "hard"]);
   });
 
   it("restricts individual bot choices to a room leader and a real lobby bot", async () => {
@@ -1549,7 +1550,7 @@ describe("Authoritative private rooms", () => {
     const op = { type: "bot-difficulty", seat: 2, difficulty: "easy" };
     for (const invalid of [
       { ...op, difficulty: "expert" },
-      { ...op, seat: 4 },
+      { ...op, seat: 5 },
       { ...op, extra: true },
     ])
       expect(
@@ -2040,13 +2041,13 @@ describe("Authoritative private rooms", () => {
     expect(wrong.status).toBe(401);
   });
 
-  it("uses four seats, validates settings and only allows the host to start", async () => {
+  it("uses five seats, validates settings and only allows the host to start", async () => {
     const host = await create();
     const second = await join(host.roomCode, "Bo");
     const hostSocket = await connect(host);
     const secondSocket = await connect(second);
     const welcome = await hostSocket.next("welcome");
-    expect(welcome.lobby.seats).toHaveLength(4);
+    expect(welcome.lobby.seats).toHaveLength(5);
     expect(welcome.you.seat).toBe(0);
     await secondSocket.next("welcome");
     secondSocket.send({
@@ -2064,7 +2065,7 @@ describe("Authoritative private rooms", () => {
     const created = events.events.find((event) => event.type === "GameCreated");
     expect(
       created?.type === "GameCreated" ? created.state.players.length : 0,
-    ).toBe(4);
+    ).toBe(5);
     // A late arrival waits without a seat: for a bot's place or the next game.
     const lateJoin = await exports.default.fetch(
       new Request(`${origin}/api/rooms/${host.roomCode}/join`, {
@@ -2118,6 +2119,7 @@ describe("Authoritative private rooms", () => {
       ["Milo", "bot"],
       ["Place libre", null],
       ["Place libre", null],
+      ["Place libre", null],
     ]);
     expect(await lobbyOp("again", { type: "add-bot", seat: 1 })).toBe(
       "seat-taken",
@@ -2146,6 +2148,7 @@ describe("Authoritative private rooms", () => {
       ["Milo", "bot"],
       ["Atlas", "bot"],
       ["Place libre", null],
+      ["Place libre", null],
     ]);
     expect(await lobbyOp("drop-1", { type: "remove-bot", seat: 1 })).toBe(
       "ack",
@@ -2153,6 +2156,7 @@ describe("Authoritative private rooms", () => {
     expect(await seats()).toEqual([
       ["Alex", "human"],
       ["Atlas", "bot"],
+      ["Place libre", null],
       ["Place libre", null],
       ["Place libre", null],
     ]);
@@ -2567,6 +2571,7 @@ describe("Authoritative private rooms", () => {
         "human",
         "human",
         "human",
+        null,
       ]);
     }
     for (const inbox of resumed.slice(0, 2)) {
@@ -2631,16 +2636,31 @@ describe("Authoritative private rooms", () => {
     expect(events.proofs?.[0].proof.mode).toBe("secure");
   });
 
-  it("isolates event logs and rejects a fifth human seat", async () => {
-    const game = await startFour();
+  it("isolates event logs and rejects a sixth human seat", async () => {
+    const host = await create();
+    const others = await Promise.all([
+      join(host.roomCode, "Bo"),
+      join(host.roomCode, "Cam"),
+      join(host.roomCode, "Dee"),
+      join(host.roomCode, "Eve"),
+    ]);
+    const hostSocket = await connect(host);
+    await hostSocket.next("welcome");
+    hostSocket.send({
+      type: "lobby",
+      id: "start-five",
+      op: { type: "start", fillBots: false },
+    });
+    expect((await hostSocket.next("ack")).id).toBe("start-five");
+    expect(others).toHaveLength(4);
     const other = await create();
-    const fifth = await exports.default.fetch(
-      new Request(`${origin}/api/rooms/${game.credentials[0].roomCode}/join`, {
+    const sixth = await exports.default.fetch(
+      new Request(`${origin}/api/rooms/${host.roomCode}/join`, {
         method: "POST",
-        body: JSON.stringify({ name: "Five" }),
+        body: JSON.stringify({ name: "Six" }),
       }),
     );
-    expect(fifth.status).toBe(409);
+    expect(sixth.status).toBe(409);
     const otherSocket = await connect(other);
     const welcome = await otherSocket.next("welcome");
     expect(welcome.seq).toBe(0);
@@ -2785,7 +2805,7 @@ describe("Authoritative private rooms", () => {
       if (created?.type !== "GameCreated")
         throw new Error("GameCreated expected");
       const state = created.state;
-      expect(state.startingTurnOrder).toEqual([3, 0, 1, 2]);
+      expect(state.startingTurnOrder).toEqual([4, 0, 1, 2, 3]);
       expect(state.pending?.deadline).toBe(
         state.startedAt +
           DECISION_TIMING.startAnimation +
@@ -2859,7 +2879,7 @@ describe("Authoritative private rooms", () => {
       if (created?.type !== "GameCreated")
         throw new Error("GameCreated expected");
       original = created.state;
-      expect(original.startingTurnOrder).toEqual([3, 2, 0, 1]);
+      expect(original.startingTurnOrder).toEqual([4, 2, 3, 0, 1]);
       expect(original.config.turnOrderRule).toBe("shuffled");
       expect(original.pending?.deadline).toBe(
         original.startedAt + decisionWindow(original.config, "roll"),
@@ -4234,6 +4254,7 @@ describe("Room leader, waiting room and shared screens", () => {
       ["human", 0, true],
       [null, null, false],
       [null, null, false],
+      [null, null, false],
     ]);
     expect(
       await runInDurableObject(stub, (_instance, durableState) => ({
@@ -4329,6 +4350,7 @@ describe("Room leader, waiting room and shared screens", () => {
       ["Alex", null],
       ["Bo", null],
       ["Kim", 1],
+      ["Place libre", null],
       ["Place libre", null],
     ]);
     expect(
@@ -4473,7 +4495,7 @@ describe("Room leader, waiting room and shared screens", () => {
             member,
           }),
         ).toBe("ack");
-      for (const seat of [1, 2, 3])
+      for (const seat of [1, 2, 3, 4])
         expect(
           await roomOp(hostSocket, `fill-local-${seat}`, {
             type: "add-local",
@@ -4501,6 +4523,7 @@ describe("Room leader, waiting room and shared screens", () => {
         null,
         null,
         null,
+        null,
       ]);
       expect(promoted.lobby.seats[0]).toMatchObject({
         name: "Next leader",
@@ -4523,7 +4546,7 @@ describe("Room leader, waiting room and shared screens", () => {
   );
 
   it("opens a lobby with the bots Play asks for and seats friends in their places", async () => {
-    const host = await create(undefined, 3);
+    const host = await create(undefined, 4);
     const lobby = await lobbyOf(host.roomCode);
     expect(lobby).toMatchObject({ hostSeat: 0, locked: false, waiting: [] });
     expect(lobby.seats.map((seat) => [seat.name, seat.control])).toEqual([
@@ -4531,18 +4554,20 @@ describe("Room leader, waiting room and shared screens", () => {
       ["Milo", "bot"],
       ["Nova", "bot"],
       ["Atlas", "bot"],
+      ["Cleo", "bot"],
     ]);
     // Each friend takes the next bot's place, in seat order.
     for (const [name, seat] of [
       ["Bo", 1],
       ["Cam", 2],
       ["Dee", 3],
+      ["Eve", 4],
     ] as const)
       expect((await join(host.roomCode, name)).seat).toBe(seat);
     const full = await exports.default.fetch(
       new Request(`${origin}/api/rooms/${host.roomCode}/join`, {
         method: "POST",
-        body: JSON.stringify({ name: "Eve" }),
+        body: JSON.stringify({ name: "Frank" }),
       }),
     );
     expect(full.status).toBe(409);
@@ -4557,8 +4582,9 @@ describe("Room leader, waiting room and shared screens", () => {
       ["Bo", "human"],
       ["Cam", "human"],
       ["Dee", "human"],
+      ["Eve", "human"],
     ]);
-    for (const bots of [4, -1, 1.5])
+    for (const bots of [5, -1, 1.5])
       expect((await createRoom({ name: "Alex", bots })).status).toBe(400);
   });
 
@@ -4719,14 +4745,15 @@ describe("Room leader, waiting room and shared screens", () => {
     expect(
       await roomOp(hostSocket, "unlock", { type: "lock", locked: false }),
     ).toBe("ack");
-    expect((await deeSocket.next("welcome")).you.seat).toBe(1);
+    expect((await deeSocket.next("welcome")).you.seat).toBe(4);
     lobby = await lobbyOf(host.roomCode);
     expect(lobby.locked).toBe(false);
     expect(lobby.seats.map((seat) => [seat.name, seat.control])).toEqual([
       ["Alex", "human"],
-      ["Dee", "human"],
+      ["Milo", "bot"],
       ["Nova", "bot"],
       ["Bo", "human"],
+      ["Dee", "human"],
     ]);
   });
 
@@ -4745,7 +4772,7 @@ describe("Room leader, waiting room and shared screens", () => {
     expect(late.seat).toBeNull();
     const lateSocket = await connect(late);
     const watching = await lateSocket.next("welcome");
-    expect(watching.snapshot?.players).toHaveLength(4);
+    expect(watching.snapshot?.players).toHaveLength(5);
     const member = watching.you.member;
     expect(watching.you.seat).toBeNull();
     expect(member).toMatch(/^[a-f0-9]{16}$/);
@@ -4835,6 +4862,7 @@ describe("Room leader, waiting room and shared screens", () => {
       ["Bo", "human"],
       ["Late", "human"],
       ["Next", "human"],
+      ["Cleo", "bot"],
     ]);
     const storage = await runInDurableObject(
       env.GAME_ROOM.getByName(host.roomCode),
@@ -4860,7 +4888,7 @@ describe("Room leader, waiting room and shared screens", () => {
     expect(
       created?.type === "GameCreated" &&
         created.state.players.map((player) => player.name),
-    ).toEqual(["Alex", "Bo", "Late", "Next"]);
+    ).toEqual(["Alex", "Bo", "Late", "Next", "Cleo"]);
   });
 
   it("seats a player who shares a device and lets only that device act for them", async () => {
@@ -4959,6 +4987,7 @@ describe("Room leader, waiting room and shared screens", () => {
       false,
       true,
       false,
+      false,
     ]);
     const timers = await runInDurableObject(
       env.GAME_ROOM.getByName(host.roomCode),
@@ -4971,5 +5000,98 @@ describe("Room leader, waiting room and shared screens", () => {
           .map((timer) => timer.kind),
     );
     expect(timers).toEqual(["grace:0", "grace:1"]);
+  });
+
+  it("persists player and bot cosmetics across room entry, lobby edits, and match start", async () => {
+    const heroCosmetics = {
+      skin: "astronaut",
+      tone: "gold",
+      hat: "crown",
+      eyewear: "visor",
+      gear: "jetpack",
+    } as const;
+    const friendCosmetics = {
+      skin: "ninja",
+      tone: "crimson",
+      hat: "headphones",
+      eyewear: "shades",
+      gear: "scarf",
+    } as const;
+    const botCosmetics = {
+      skin: "cat",
+      tone: "sakura",
+      hat: "wizard",
+      eyewear: "star",
+      gear: "wings",
+    } as const;
+    const createdResponse = await exports.default.fetch(
+      new Request(`${origin}/api/rooms`, {
+        method: "POST",
+        headers: { Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Alex",
+          bots: 1,
+          cosmetics: heroCosmetics,
+        }),
+      }),
+    );
+    expect(createdResponse.status).toBe(201);
+    const host = await createdResponse.json<RoomCredentials>();
+    const joinedResponse = await exports.default.fetch(
+      new Request(`${origin}/api/rooms/${host.roomCode}/join`, {
+        method: "POST",
+        headers: { Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Bo", cosmetics: friendCosmetics }),
+      }),
+    );
+    expect(joinedResponse.status).toBe(200);
+    const bo = await joinedResponse.json<RoomCredentials>();
+    const hostSocket = await connect(host);
+    const boSocket = await connect(bo);
+    const hostWelcome = await hostSocket.next("welcome");
+    await boSocket.next("welcome");
+    expect(hostWelcome.lobby.seats[0].cosmetics).toEqual(heroCosmetics);
+    expect(hostWelcome.lobby.seats[1].cosmetics).toBeUndefined();
+    expect(
+      hostWelcome.lobby.seats.find((entry) => entry.name === "Bo")?.cosmetics,
+    ).toEqual(friendCosmetics);
+    expect(
+      await roomOp(boSocket, "steal-cosmetics", {
+        type: "cosmetics",
+        seat: 0,
+        cosmetics: botCosmetics,
+      }),
+    ).toBe("not-your-seat");
+    expect(
+      await roomOp(boSocket, "bot-cosmetics-denied", {
+        type: "cosmetics",
+        seat: 1,
+        cosmetics: botCosmetics,
+      }),
+    ).toBe("host-only");
+    expect(
+      await roomOp(hostSocket, "bot-cosmetics", {
+        type: "cosmetics",
+        seat: 1,
+        cosmetics: botCosmetics,
+      }),
+    ).toBe("ack");
+    expect(
+      await roomOp(hostSocket, "start-dressed", {
+        type: "start",
+        fillBots: false,
+      }),
+    ).toBe("ack");
+    const started = await hostSocket.next("events");
+    const created = started.events.find(
+      (event) => event.type === "GameCreated",
+    );
+    if (created?.type !== "GameCreated")
+      throw new Error("GameCreated expected");
+    expect(created.state.players.map((p) => p.cosmetics)).toEqual([
+      heroCosmetics,
+      botCosmetics,
+      friendCosmetics,
+    ]);
   });
 });

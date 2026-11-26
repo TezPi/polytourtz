@@ -429,7 +429,7 @@ describe("createGame", () => {
     ).toThrow("festival rule");
     expect(() =>
       createGame(DEFAULT_GAME_CONFIG, SEATS.slice(0, 1), 1, { now: 0 }),
-    ).toThrow("2 to 4 seats");
+    ).toThrow("2 to 5 seats");
     expect(() =>
       createGame(DEFAULT_GAME_CONFIG, [SEATS[0], SEATS[0]], 1, { now: 0 }),
     ).toThrow("unique player ID");
@@ -453,5 +453,16 @@ describe("createGame", () => {
         now: 0,
       }),
     ).toThrow("0 to 20");
+  });
+  it("supports a 5-player match with seat 4", () => {
+    const fiveSeats: readonly SeatInfo[] = [
+      ...SEATS,
+      { playerId: "eli", name: "Eli", control: "bot" },
+    ];
+    const { state } = createGame(DEFAULT_GAME_CONFIG, fiveSeats, 7, {
+      now: 100,
+    });
+    expect(state.players.map((player) => player.seat)).toEqual([0, 1, 2, 3, 4]);
+    expect(state.turnOrder).toHaveLength(5);
   });
 });

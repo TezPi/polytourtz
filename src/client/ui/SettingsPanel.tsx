@@ -185,11 +185,18 @@ export default function SettingsPanel({
           id={`${id}-language`}
           value={locale}
           onChange={(event) =>
-            setLocale(event.target.value === "en" ? "en" : "fr")
+            setLocale(
+              event.target.value === "en"
+                ? "en"
+                : event.target.value === "vi"
+                  ? "vi"
+                  : "fr",
+            )
           }
         >
           <option value="fr">Français</option>
           <option value="en">English</option>
+          <option value="vi">Tiếng Việt</option>
         </select>
       </div>
       <div className="settings-streamer">

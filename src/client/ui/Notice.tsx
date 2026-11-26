@@ -94,14 +94,17 @@ export default function PurchaseNotice({
     null;
   const verbFr = buyout ? "racheter" : "acheter";
   const verbEn = buyout ? "buy out" : "buy";
+  const verbVi = buyout ? "mua lại" : "mua";
   const headline = own
     ? t(
         `Vous n’avez pas assez d’argent pour ${verbFr} ${city}`,
         `You don’t have enough money to ${verbEn} ${city}`,
+        `Bạn không đủ tiền để ${verbVi} ${city}`,
       )
     : t(
         `${name} n’a pas assez d’argent pour ${verbFr} ${city}`,
         `${name} doesn’t have enough money to ${verbEn} ${city}`,
+        `${name} không đủ tiền để ${verbVi} ${city}`,
       );
   return (
     <dialog

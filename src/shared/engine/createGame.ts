@@ -2672,7 +2672,7 @@ export function createGame(
     ) ||
     new Set(tableSeats).size !== tableSeats.length
   )
-    throw new RangeError("Every player needs a unique table seat from 0 to 3");
+    throw new RangeError("Every player needs a unique table seat from 0 to 4");
   const players: PlayerState[] = seats
     .map((seat, index) => ({
       playerId: seat.playerId,
@@ -2684,6 +2684,7 @@ export function createGame(
               seat.botDifficulty ?? config.botDifficulty ?? "medium",
           }
         : {}),
+      ...(seat.cosmetics ? { cosmetics: seat.cosmetics } : {}),
       seat: tableSeats[index] as Seat,
       cash: config.startingCash,
       position: 0,

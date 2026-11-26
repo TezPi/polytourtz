@@ -16,7 +16,7 @@ const welcome = {
     hostSeat: 0,
     status: "lobby",
     config: RoomConfigSchema.parse({}),
-    seats: [0, 1, 2, 3].map((seat) => ({
+    seats: [0, 1, 2, 3, 4].map((seat) => ({
       seat,
       name: `Player ${seat + 1}`,
       control: seat === 0 ? "human" : null,
@@ -133,6 +133,7 @@ describe("room debug server envelopes", () => {
             { seat: 1, botDifficulty: difficulty },
             { seat: 2 },
             { seat: 3 },
+            { seat: 4 },
           ],
         },
       });
@@ -417,7 +418,7 @@ describe("room debug server envelopes", () => {
       parseServerMessage(
         JSON.stringify({
           type: "room-diagnostics",
-          value: { ...diagnostics, peers: Array(5).fill(diagnostics.peers[0]) },
+          value: { ...diagnostics, peers: Array(6).fill(diagnostics.peers[0]) },
         }),
       ),
     ).toThrow();
@@ -430,7 +431,7 @@ function lobby() {
     hostSeat: 0,
     status: "lobby",
     config: RoomConfigSchema.parse({}),
-    seats: [0, 1, 2, 3].map((seat) => ({
+    seats: [0, 1, 2, 3, 4].map((seat) => ({
       seat,
       name: "Fixture",
       control: null,
@@ -486,7 +487,7 @@ describe("room people at the client boundary", () => {
       waiting: [
         { id: "0123456789abcdef", name: "Bo", approved: false, online: true },
       ],
-      seats: [0, 1, 2, 3].map((seat) => ({
+      seats: [0, 1, 2, 3, 4].map((seat) => ({
         seat,
         name: "Fixture",
         control: "human",
@@ -508,6 +509,7 @@ describe("room people at the client boundary", () => {
       0,
       null,
       null,
+      null,
     ]);
   });
   it("welcomes someone who waits without a seat", () => {
@@ -527,5 +529,43 @@ describe("room people at the client boundary", () => {
     // Fields a lobby fixture leaves out read as an open room without guests.
     expect(message.lobby).toMatchObject({ locked: false, waiting: [] });
     expect(message.lobby.seats[0].controller).toBeNull();
+  });
+
+  it("parses custom character skins and accessories and rejects unknown cosmetics", () => {
+    const cosmetics = {
+      skin: "astronaut",
+      tone: "gold",
+      hat: "crown",
+      eyewear: "visor",
+      gear: "jetpack",
+    } as const;
+    const message = parseServerMessage(
+      JSON.stringify({
+        type: "lobby",
+        lobby: {
+          ...lobby(),
+          seats: lobby().seats.map((entry, index) =>
+            index === 0 ? { ...entry, cosmetics } : entry,
+          ),
+        },
+      }),
+    );
+    if (message.type !== "lobby") throw new Error("Expected lobby");
+    expect(message.lobby.seats[0].cosmetics).toEqual(cosmetics);
+    expect(() =>
+      parseServerMessage(
+        JSON.stringify({
+          type: "lobby",
+          lobby: {
+            ...lobby(),
+            seats: lobby().seats.map((entry, index) =>
+              index === 0
+                ? { ...entry, cosmetics: { ...cosmetics, skin: "unknown" } }
+                : entry,
+            ),
+          },
+        }),
+      ),
+    ).toThrow();
   });
 });

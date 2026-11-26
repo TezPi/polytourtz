@@ -69,40 +69,64 @@ export type DecisionPanelProps = {
 type ConstructionAction = Extract<Action, { type: "Buy" | "Build" }>;
 type DestinationAction = Extract<Action, { tile: number }>;
 const COPY = {
-  roll: ["À vous de jouer !", "", "Your turn", ""],
-  buy: ["Acheter cette ville", "", "Buy this city", ""],
-  build: ["Construire", "", "Build", ""],
-  buyout: ["Racheter cette ville", "", "Buy out this city", ""],
+  roll: ["À vous de jouer !", "", "Your turn", "", "Lượt của bạn!", ""],
+  buy: [
+    "Acheter cette ville",
+    "",
+    "Buy this city",
+    "",
+    "Mua thành phố này",
+    "",
+  ],
+  build: ["Construire", "", "Build", "", "Xây dựng", ""],
+  buyout: [
+    "Racheter cette ville",
+    "",
+    "Buy out this city",
+    "",
+    "Mua lại thành phố này",
+    "",
+  ],
   sell: [
     "Une dette à régler",
     "Choisissez une propriété à vendre pour payer votre dette.",
     "Settle your debt",
     "Choose a property to sell and raise cash for your debt.",
+    "Trả nợ",
+    "Chọn một tài sản để bán lấy tiền trả nợ.",
   ],
-  island: ["Quitter l’île", "", "Leave the Island", ""],
+  island: ["Quitter l’île", "", "Leave the Island", "", "Rời Đảo hoang", ""],
   travel: [
     "Choisissez votre destination",
     "Cliquez une case en surbrillance ou utilisez la liste.",
     "Choose a destination",
     "Click a highlighted space or use the list.",
+    "Chọn điểm đến",
+    "Bấm vào ô được tô sáng hoặc chọn từ danh sách.",
   ],
   host: [
     "Championnat",
     "Cliquez l’une de vos villes en surbrillance ou utilisez la liste.",
     "Championship",
     "Click one of your highlighted cities or use the list.",
+    "Giải đấu",
+    "Bấm vào một thành phố của bạn đang sáng hoặc chọn từ danh sách.",
   ],
   "card-target": [
     "Choisir une ville",
     "Choisissez la ville qui recevra l’effet de votre carte.",
     "Choose a city",
     "Choose the city to receive your card’s effect.",
+    "Chọn thành phố",
+    "Chọn thành phố sẽ nhận hiệu ứng của thẻ.",
   ],
   "rent-card": [
     "Régler le loyer",
     "Utilisez une carte de protection ou payez le loyer.",
     "Pay rent",
     "Use a protection card or pay the rent.",
+    "Trả tiền thuê",
+    "Dùng thẻ bảo vệ hoặc thanh toán tiền thuê.",
   ],
 } as const;
 /** What the chosen city will receive, for each card that asks for one. */
@@ -128,11 +152,13 @@ function cardTargetCopy(
       return t(
         `Choisissez votre ville qui gagnera un niveau, payé par ${opponent(true)}.`,
         `Choose your city to gain a level, paid for by ${opponent(true)}.`,
+        `Chọn một thành phố của bạn để tăng 1 cấp, do ${opponent(true)} trả tiền.`,
       );
     case "Power Cut":
       return t(
         `Choisissez la ville adverse privée de loyer pendant ${CHANCE_AMOUNTS.powerCutLaps} tours de son propriétaire.`,
         `Choose the opponent’s city that earns no rent for its owner’s next ${CHANCE_AMOUNTS.powerCutLaps} laps.`,
+        `Chọn thành phố đối thủ bị mất tiền thuê trong ${CHANCE_AMOUNTS.powerCutLaps} vòng tiếp theo của chủ sở hữu.`,
       );
     case "Forced Sale":
       return t(
@@ -148,6 +174,7 @@ function cardTargetCopy(
       return t(
         `Choisissez la ville que vous offrez à ${opponent(false)}.`,
         `Choose the city you give to ${opponent(false)}.`,
+        `Chọn thành phố bạn sẽ tặng cho ${opponent(false)}.`,
       );
     case "Earthquake":
     case "Land Swap":
@@ -158,8 +185,18 @@ function cardTargetCopy(
   }
 }
 function decisionCopy(kind: keyof typeof COPY): readonly [string, string] {
-  const [frTitle, frDescription, enTitle, enDescription] = COPY[kind];
-  return [t(frTitle, enTitle), t(frDescription, enDescription)];
+  const [
+    frTitle,
+    frDescription,
+    enTitle,
+    enDescription,
+    viTitle,
+    viDescription,
+  ] = COPY[kind];
+  return [
+    t(frTitle, enTitle, viTitle),
+    t(frDescription, enDescription, viDescription),
+  ];
 }
 /**
  * A forced sale whose debt is already covered: the seller carries on by
@@ -196,6 +233,7 @@ function actionLabel(action: Action, state: PublicState): string {
       return t(
         `Payer la traversée · ${money(actionCost(state, action))}`,
         `Pay the fare · ${money(actionCost(state, action))}`,
+        `Trả phí rời đảo · ${money(actionCost(state, action))}`,
       );
     case "UseEscapeCard":
       return t("Utiliser la carte d’évasion", "Use the escape card");
@@ -203,6 +241,7 @@ function actionLabel(action: Action, state: PublicState): string {
       return t(
         `Racheter · ${money(actionCost(state, action))}`,
         `Buy out · ${money(actionCost(state, action))}`,
+        `Mua lại · ${money(actionCost(state, action))}`,
       );
     case "Travel":
       return t("Voyager ici", "Travel here");
@@ -214,6 +253,7 @@ function actionLabel(action: Action, state: PublicState): string {
           ? t(
               `Organiser le championnat · ${money(cost)}`,
               `Host the championship · ${money(cost)}`,
+              `Đăng cai Giải đấu · ${money(cost)}`,
             )
           : t("Organiser le championnat", "Host the championship");
     }
@@ -224,27 +264,36 @@ function actionLabel(action: Action, state: PublicState): string {
           return t(
             `Échanger ${tileName(pending.sourceTile, state.config)} contre ${tileName(action.tile, state.config)}`,
             `Swap ${tileName(pending.sourceTile, state.config)} for ${tileName(action.tile, state.config)}`,
+            `Đổi ${tileName(pending.sourceTile, state.config)} lấy ${tileName(action.tile, state.config)}`,
           );
         const city = tileName(action.tile, state.config);
         if (pending.card === "Forced Sale")
-          return t(`Forcer la vente de ${city}`, `Force the sale of ${city}`);
+          return t(
+            `Forcer la vente de ${city}`,
+            `Force the sale of ${city}`,
+            `Ép bán ${city}`,
+          );
         if (pending.card === "Shield")
-          return t(`Protéger ${city}`, `Protect ${city}`);
-        if (pending.card === "Gift") return t(`Offrir ${city}`, `Give ${city}`);
+          return t(`Protéger ${city}`, `Protect ${city}`, `Bảo vệ ${city}`);
+        if (pending.card === "Gift")
+          return t(`Offrir ${city}`, `Give ${city}`, `Tặng ${city}`);
         if (pending.card === "Contractor" || pending.card === "Patron")
           return t(
             `Offrir un niveau à ${tileName(action.tile, state.config)}`,
             `Add a level to ${tileName(action.tile, state.config)}`,
+            `Nâng 1 cấp cho ${tileName(action.tile, state.config)}`,
           );
         if (pending.card === "Earthquake")
           return t(
             `Retirer un niveau à ${tileName(action.tile, state.config)}`,
             `Remove a level from ${tileName(action.tile, state.config)}`,
+            `Phá 1 cấp ở ${tileName(action.tile, state.config)}`,
           );
         if (pending.card === "Power Cut")
           return t(
             `Couper le courant à ${tileName(action.tile, state.config)}`,
             `Cut the power in ${tileName(action.tile, state.config)}`,
+            `Cắt điện ${tileName(action.tile, state.config)}`,
           );
       }
       return t("Choisir cette ville", "Choose this city");
@@ -261,6 +310,7 @@ function actionLabel(action: Action, state: PublicState): string {
           ? t(
               `Payer le loyer · ${money(rentCardPayment(state.pending.amount, null))}`,
               `Pay rent · ${money(rentCardPayment(state.pending.amount, null))}`,
+              `Trả tiền thuê · ${money(rentCardPayment(state.pending.amount, null))}`,
             )
           : t("Passer", "Pass");
   }
@@ -271,6 +321,7 @@ function pickConfirmLabel(action: BoardPickAction, state: PublicState): string {
       return t(
         `Voyager à ${tileName(action.tile, state.config)} · ${money(actionCost(state, action))}`,
         `Travel to ${tileName(action.tile, state.config)} · ${money(actionCost(state, action))}`,
+        `Bay tới ${tileName(action.tile, state.config)} · ${money(actionCost(state, action))}`,
       );
     case "ChooseHost": {
       const fee = championshipCost(state, action.tile);
@@ -303,6 +354,7 @@ function pickDetail(action: BoardPickAction, state: PublicState): string {
     return t(
       `Loyer ${money(propertyRent(state, tile))} → ${money(hosted)} · ×${multiplier}`,
       `Rent ${money(propertyRent(state, tile))} → ${money(hosted)} · ×${multiplier}`,
+      `Tiền thuê ${money(propertyRent(state, tile))} → ${money(hosted)} · ×${multiplier}`,
     );
   }
   if (action.type === "ChooseTarget")
@@ -314,25 +366,30 @@ function pickDetail(action: BoardPickAction, state: PublicState): string {
     return t(
       `Salaire de ${money(arrivalSalary(state.config))} à l’arrivée`,
       `Collect ${money(arrivalSalary(state.config))} on arrival`,
+      `Nhận ${money(arrivalSalary(state.config))} khi tới nơi`,
     );
   if (owner)
     return resort
       ? t(
           `Votre plage · loyer ${money(propertyRent(state, tile))}`,
           `Your beach · rent ${money(propertyRent(state, tile))}`,
+          `Bãi biển của bạn · thuê ${money(propertyRent(state, tile))}`,
         )
       : t(
           `Votre ville · ${levelName(property?.level ?? 0)} · construire`,
           `Your city · ${levelName(property?.level ?? 0)} · build`,
+          `Thành phố của bạn · ${levelName(property?.level ?? 0)} · xây dựng`,
         );
   return resort
     ? t(
         `Plage libre · ${money(tilePrice(tile, state) ?? 0)}`,
         `Unowned beach · ${money(tilePrice(tile, state) ?? 0)}`,
+        `Bãi biển trống · ${money(tilePrice(tile, state) ?? 0)}`,
       )
     : t(
         `Ville libre · terrain ${money(tilePrice(tile, state) ?? 0)}`,
         `Unowned city · land ${money(tilePrice(tile, state) ?? 0)}`,
+        `Thành phố trống · đất ${money(tilePrice(tile, state) ?? 0)}`,
       );
 }
 function confirmLabel(action: Action, state: PublicState): string {
@@ -341,26 +398,31 @@ function confirmLabel(action: Action, state: PublicState): string {
       return t(
         `Acheter · ${money(actionCost(state, action))}`,
         `Buy · ${money(actionCost(state, action))}`,
+        `Mua · ${money(actionCost(state, action))}`,
       );
     case "Build":
       return t(
         `Construire · ${money(actionCost(state, action))}`,
         `Build · ${money(actionCost(state, action))}`,
+        `Xây · ${money(actionCost(state, action))}`,
       );
     case "Buyout":
       return t(
         `Confirmer le rachat · ${money(actionCost(state, action))}`,
         `Confirm buyout · ${money(actionCost(state, action))}`,
+        `Xác nhận mua lại · ${money(actionCost(state, action))}`,
       );
     case "Sell":
       return t(
         `Vendre · ${money(propertyRefund(state, action.tile))}`,
         `Sell · ${money(propertyRefund(state, action.tile))}`,
+        `Bán · ${money(propertyRefund(state, action.tile))}`,
       );
     case "Travel":
       return t(
         `Voyager ici · ${money(actionCost(state, action))}`,
         `Travel here · ${money(actionCost(state, action))}`,
+        `Bay tới đây · ${money(actionCost(state, action))}`,
       );
     case "Decline":
       return settledSale(state)
@@ -628,14 +690,17 @@ export default function DecisionPanel({
               ? t(
                   `Faites un double, utilisez votre carte d’évasion ou payez ${money(pending.fee)} pour repartir.`,
                   `Roll doubles, use your escape card or pay ${money(pending.fee)} to leave.`,
+                  `Tung đôi, dùng thẻ thoát đảo hoặc trả ${money(pending.fee)} để rời đảo.`,
                 )
               : t(
                   `Faites un double ou payez ${money(pending.fee)} pour repartir.`,
                   `Roll doubles or pay ${money(pending.fee)} to leave.`,
+                  `Tung đôi hoặc trả ${money(pending.fee)} để rời đảo.`,
                 )
           } ${t(
             `Vous serez libéré après ${islandRollsLeft} lancer${islandRollsLeft === 1 ? "" : "s"} raté${islandRollsLeft === 1 ? "" : "s"} supplémentaire${islandRollsLeft === 1 ? "" : "s"}.`,
             `You are released after ${islandRollsLeft} more failed roll${islandRollsLeft === 1 ? "" : "s"}.`,
+            `Bạn sẽ tự do sau ${islandRollsLeft} lượt tung trượt nữa.`,
           )}`,
         ]
       : pending?.kind === "card-target"
@@ -645,6 +710,7 @@ export default function DecisionPanel({
               ? t(
                   `Votre ville de ${tileName(pending.sourceTile, state.config)} sera échangée avec la ville choisie. Les constructions restent sur chaque propriété.`,
                   `Your city of ${tileName(pending.sourceTile, state.config)} will be swapped for the selected city. Buildings stay on each property.`,
+                  `Thành phố ${tileName(pending.sourceTile, state.config)} của bạn sẽ đổi với thành phố được chọn. Công trình vẫn giữ nguyên.`,
                 )
               : cardTargetCopy(state, pending.card, pending.seat),
           ]
@@ -656,6 +722,7 @@ export default function DecisionPanel({
                 t(
                   `Déplacer le championnat coûte ${money(ruleEconomy(economyRule(state.config)).championshipFee)}, le renouveler est gratuit. Chaque édition ajoute ×1 au loyer de la ville hôte.`,
                   `Moving the championship costs ${money(ruleEconomy(economyRule(state.config)).championshipFee)}; renewing it is free. Each edition adds ×1 to the host city’s rent.`,
+                  `Chuyển chỗ Giải đấu tốn ${money(ruleEconomy(economyRule(state.config)).championshipFee)}, gia hạn miễn phí. Mỗi lần tổ chức cộng thêm ×1 tiền thuê.`,
                 ),
               ]
             : decisionCopy(pending?.kind ?? "roll");
@@ -745,6 +812,7 @@ export default function DecisionPanel({
             aria-label={t(
               `${countdown} secondes restantes`,
               `${countdown} seconds remaining`,
+              `Còn ${countdown} giây`,
             )}
           >
             {countdown}s
@@ -803,6 +871,7 @@ export default function DecisionPanel({
               aria-label={t(
                 `${countdown} secondes restantes`,
                 `${countdown} seconds remaining`,
+                `Còn ${countdown} giây`,
               )}
             >
               {countdown}s
@@ -901,6 +970,7 @@ export default function DecisionPanel({
         ? t(
             `Il faut ${money(pending.fee)} pour voyager. Lancez les dés pour continuer.`,
             `Travel costs ${money(pending.fee)}. Roll the dice to continue.`,
+            `Phí bay là ${money(pending.fee)}. Hãy tung xúc xắc để tiếp tục.`,
           )
         : pending.kind === "card-target"
           ? `${copy[1]} ${t("Cliquez-la sur le plateau.", "Click it on the board.")}`
@@ -946,6 +1016,7 @@ export default function DecisionPanel({
                 {t(
                   `Liste des cases (${pickActions.length})`,
                   `List of spaces (${pickActions.length})`,
+                  `Danh sách ô (${pickActions.length})`,
                 )}
               </option>
               {pickActions.map((action) => (
@@ -964,6 +1035,7 @@ export default function DecisionPanel({
             aria-label={t(
               `${countdown} secondes restantes`,
               `${countdown} seconds remaining`,
+              `Còn ${countdown} giây`,
             )}
           >
             {countdown}s
@@ -1041,6 +1113,7 @@ export default function DecisionPanel({
                             {t(
                               `+${money(salary)} au départ`,
                               `+${money(salary)} at Start`,
+                              `+${money(salary)} qua Xuất phát`,
                             )}
                           </small>
                         )}
@@ -1113,8 +1186,9 @@ export default function DecisionPanel({
       : viewer !== null && shownSeat === viewer
         ? t("Votre tour", "Your turn")
         : t(
-            `${shownName ?? t("Votre adversaire", "Your opponent")} joue`,
-            `${shownName ?? t("Votre adversaire", "Your opponent")} is playing`,
+            `${shownName ?? t("Votre adversaire", "Your opponent", "Đối thủ")} joue`,
+            `${shownName ?? t("Votre adversaire", "Your opponent", "Đối thủ")} is playing`,
+            `Lượt của ${shownName ?? t("Votre adversaire", "Your opponent", "Đối thủ")}`,
           );
   // Someone else's turn, or an animation in progress: the board and the active
   // HUD already show it, so the bottom of the screen stays empty.
@@ -1142,6 +1216,7 @@ export default function DecisionPanel({
             aria-label={t(
               `${countdown} secondes pour lancer`,
               `${countdown} seconds to roll`,
+              `Còn ${countdown} giây để tung`,
             )}
           >
             {countdown}s
@@ -1163,6 +1238,7 @@ export default function DecisionPanel({
               ? t(
                   `Signal drand #${randomness.commitment.round}`,
                   `Drand beacon #${randomness.commitment.round}`,
+                  `Tín hiệu drand #${randomness.commitment.round}`,
                 )
               : t("Tirage serveur…", "Rolling dice…")}
           </div>
@@ -1444,6 +1520,7 @@ export default function DecisionPanel({
                           ? t(
                               `${actionLabel(action, state)} · loyer futur ${money(futureRent)}`,
                               `${actionLabel(action, state)} · future rent ${money(futureRent)}`,
+                              `${actionLabel(action, state)} · tiền thuê mới ${money(futureRent)}`,
                             )
                           : `${levelName(action.level)} · ${lockedReason(action.level)}`
                       }
@@ -1546,6 +1623,7 @@ export default function DecisionPanel({
                       aria-label={t(
                         `Choisir le voyage vers ${tileName(destinationChoice.tile, state.config)}`,
                         `Choose travel to ${tileName(destinationChoice.tile, state.config)}`,
+                        `Chọn bay tới ${tileName(destinationChoice.tile, state.config)}`,
                       )}
                       aria-pressed={selectedAction?.type === "Travel"}
                       disabled={blocked}

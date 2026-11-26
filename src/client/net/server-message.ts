@@ -1,10 +1,19 @@
 import { z } from "zod";
 import type { GameEvent, PublicState } from "../../shared/engine/index.js";
 import type { ServerMessage } from "../../shared/protocol/index.js";
-import { RoomConfigSchema } from "../../shared/protocol/index.js";
+import {
+  CosmeticsSchema,
+  RoomConfigSchema,
+} from "../../shared/protocol/index.js";
 import { RoomDiagnosticsSchema } from "../../shared/protocol/room-diagnostics.js";
 
-const seat = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+const seat = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+]);
 const botDifficulty = z.enum(["easy", "medium", "hard"]);
 const tile = z.number().int().min(0).max(31);
 const integer = z.number().int();
@@ -13,8 +22,8 @@ const pause = z
     z.object({
       kind: z.literal("vote"),
       requestedBy: seat,
-      requiredSeats: z.array(seat).min(2).max(4),
-      acceptedSeats: z.array(seat).min(1).max(4),
+      requiredSeats: z.array(seat).min(2).max(5),
+      acceptedSeats: z.array(seat).min(1).max(5),
       deadline: integer.nonnegative(),
     }),
     z.object({
@@ -66,6 +75,7 @@ const publicState = z.object({
       seat,
       control: z.enum(["human", "bot"]),
       botDifficulty: botDifficulty.optional(),
+      cosmetics: CosmeticsSchema.optional(),
       cash: integer,
       position: tile,
       laps: integer,
@@ -227,11 +237,12 @@ const lobby = z.object({
         name: z.string(),
         control: z.enum(["human", "bot"]).nullable(),
         botDifficulty: botDifficulty.optional(),
+        cosmetics: CosmeticsSchema.optional(),
         online: z.boolean(),
         controller: seat.nullable().default(null),
       }),
     )
-    .length(4),
+    .length(5),
 });
 const commitment = z.object({
   mode: z.enum(["secure", "drand"]),

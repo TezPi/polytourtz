@@ -134,7 +134,11 @@ export default function CityCard({
               >
                 {TILE_ICONS[tile.kind]}
               </span>
-              {t(`Case ${index + 1} / 32`, `Space ${index + 1} / 32`)}
+              {t(
+                `Case ${index + 1} / 32`,
+                `Space ${index + 1} / 32`,
+                `Ô ${index + 1} / 32`,
+              )}
             </span>
             <span className="city-card-kind-name">{kind}</span>
           </div>
@@ -168,7 +172,11 @@ export default function CityCard({
                     <span>
                       <strong>
                         {owner.seat === seat
-                          ? t(`${owner.name} (vous)`, `${owner.name} (you)`)
+                          ? t(
+                              `${owner.name} (vous)`,
+                              `${owner.name} (you)`,
+                              `${owner.name} (bạn)`,
+                            )
                           : owner.name}
                       </strong>
                       <small>
@@ -212,7 +220,11 @@ export default function CityCard({
 function resortTotal(count: number) {
   return count === 1
     ? t("1 plage en tout", "1 beach in all")
-    : t(`${count} plages en tout`, `${count} beaches in all`);
+    : t(
+        `${count} plages en tout`,
+        `${count} beaches in all`,
+        `Tổng ${count} bãi biển`,
+      );
 }
 
 function boostLabel(boost: RentBoost) {
@@ -377,6 +389,7 @@ function CityDeed({
           ? t(
               `Rachat : deux fois l’investissement, sauf les hôtels protégés. Festival, pays complet et championnat additionnent leurs bonus, jusqu’à ×${rules.maxRentMultiplier}.`,
               `Buyout: twice the investment, except protected Hotels. Festival, full-country and Championship bonuses add together, up to ×${rules.maxRentMultiplier}.`,
+              `Mua lại: gấp đôi vốn đầu tư (trừ Khách sạn được bảo vệ). Lễ hội, Đủ bộ quốc gia và Giải đấu cộng dồn hệ số thưởng, tối đa ×${rules.maxRentMultiplier}.`,
             )
           : t(
               "Rachat : deux fois l’investissement. Seul le plus grand bonus de festival, de pays complet ou de championnat s’applique. Les monuments sont protégés et ne reçoivent aucun bonus.",
@@ -511,45 +524,54 @@ function SpaceRule({ state, index }: { state: PublicState; index: number }) {
           ? t(
               `Recevez ${money(state.config.startSalary)} en passant par le départ, et ${money(startLandingSalary(state.config.startSalary))} en vous y arrêtant.`,
               `Receive ${money(state.config.startSalary)} when passing Start, and ${money(startLandingSalary(state.config.startSalary))} for landing on it.`,
+              `Nhận ${money(state.config.startSalary)} khi đi ngang Xuất phát, và ${money(startLandingSalary(state.config.startSalary))} nếu dừng đúng ô này.`,
             )
           : t(
               `Recevez ${money(state.config.startSalary)} en passant par le départ.`,
               `Receive ${money(state.config.startSalary)} when passing Start.`,
+              `Nhận ${money(state.config.startSalary)} mỗi lần đi qua ô Xuất phát.`,
             );
       case "island":
         return state.config.escapeCard === true
           ? t(
               `Faites un double, utilisez votre carte d’évasion ou payez ${money(rules.islandReleaseFee)} pour repartir. Vous êtes libéré après ${rules.islandMaxFailedEscapes} lancers ratés.`,
               `Roll doubles, use your escape card or pay ${money(rules.islandReleaseFee)} to leave. You are released after ${rules.islandMaxFailedEscapes} failed rolls.`,
+              `Tung đôi, dùng thẻ thoát đảo hoặc trả ${money(rules.islandReleaseFee)} để rời đảo. Tự do sau ${rules.islandMaxFailedEscapes} lượt tung trượt.`,
             )
           : t(
               `Un double ou le paiement de ${money(rules.islandReleaseFee)} vous permet de repartir. Vous êtes libéré après ${rules.islandMaxFailedEscapes} lancers ratés.`,
               `Roll doubles or pay ${money(rules.islandReleaseFee)} to leave. You are released after ${rules.islandMaxFailedEscapes} failed rolls.`,
+              `Tung đôi hoặc trả ${money(rules.islandReleaseFee)} để rời đảo. Tự do sau ${rules.islandMaxFailedEscapes} lượt tung trượt.`,
             );
       case "championship":
         return rules.championshipFee > 0
           ? t(
               `Organisez le championnat dans une de vos villes : ${money(rules.championshipFee)} pour le déplacer, gratuit pour le renouveler. Chaque édition augmente son multiplicateur, jusqu’à ×${rules.maxHostMultiplier}.`,
               `Host the Championship in one of your cities: ${money(rules.championshipFee)} to move it, free to renew. Each edition increases its multiplier, up to ×${rules.maxHostMultiplier}.`,
+              `Đăng cai Giải đấu tại thành phố của bạn: tốn ${money(rules.championshipFee)} để chuyển chỗ, miễn phí khi gia hạn. Mỗi lần tổ chức tăng hệ số thêm ×1, tối đa ×${rules.maxHostMultiplier}.`,
             )
           : t(
               `Organisez gratuitement le championnat dans une de vos villes éligibles pour multiplier son loyer jusqu’à ×${rules.maxHostMultiplier}.`,
               `Host the Championship for free in an eligible city to multiply its rent up to ×${rules.maxHostMultiplier}.`,
+              `Đăng cai Giải đấu miễn phí tại một thành phố hợp lệ để nhân tiền thuê lên tối đa ×${rules.maxHostMultiplier}.`,
             );
       case "world-tour":
         if (!rules.travelToFreeProperties)
           return t(
             `Au prochain tour, voyagez pour ${money(ECONOMY.worldTourFee)} vers une case libre, une de vos propriétés ou le départ, ou lancez les dés gratuitement.`,
             `On your next turn, travel for ${money(ECONOMY.worldTourFee)} to an unowned space, one of your properties or Start, or roll for free.`,
+            `Lượt sau bạn có thể chi ${money(ECONOMY.worldTourFee)} để bay tới ô trống, tài sản của bạn hoặc Xuất phát, hoặc tung xúc xắc miễn phí.`,
           );
         return worldTourRule(state.config) === "free-and-own"
           ? t(
               `Au prochain tour, voyagez pour ${money(ECONOMY.worldTourFee)} vers une propriété libre ou l’une des vôtres. Vous pouvez aussi lancer les dés gratuitement.`,
               `On your next turn, travel for ${money(ECONOMY.worldTourFee)} to an unowned property or one of your own. You may also roll for free.`,
+              `Lượt sau bạn có thể chi ${money(ECONOMY.worldTourFee)} để bay tới ô đất trống hoặc tài sản của bạn, hoặc tung xúc xắc miễn phí.`,
             )
           : t(
               `Au prochain tour, voyagez pour ${money(ECONOMY.worldTourFee)} vers une propriété libre, ou vers vos propriétés si aucune n’est libre. Vous pouvez aussi lancer les dés gratuitement.`,
               `On your next turn, travel for ${money(ECONOMY.worldTourFee)} to an unowned property, or one of your properties when none is free. You may also roll for free.`,
+              `Lượt sau bạn có thể chi ${money(ECONOMY.worldTourFee)} để bay tới ô trống (hoặc tài sản của bạn nếu hết ô trống), hoặc tung xúc xắc miễn phí.`,
             );
       case "chance":
         return t(
@@ -560,6 +582,7 @@ function SpaceRule({ state, index }: { state: PublicState; index: number }) {
         return t(
           `La taxe représente ${ECONOMY.taxPercent} % du montant investi dans vos propriétés${rules.minimumTax > 0 ? `, avec un minimum de ${money(rules.minimumTax)}` : ""}.`,
           `Tax is ${ECONOMY.taxPercent}% of the amount invested in your properties${rules.minimumTax > 0 ? `, with a ${money(rules.minimumTax)} minimum` : ""}.`,
+          `Thuế bằng ${ECONOMY.taxPercent}% tổng vốn đầu tư tài sản của bạn${rules.minimumTax > 0 ? ` (tối thiểu ${money(rules.minimumTax)})` : ""}.`,
         );
     }
   })();
@@ -579,6 +602,7 @@ function SpaceRule({ state, index }: { state: PublicState; index: number }) {
           {t(
             `En ce moment : ${tileName(host.tile, state.config)} · loyer ×${host.multiplier}`,
             `Now hosting: ${tileName(host.tile, state.config)} · rent ×${host.multiplier}`,
+            `Đang đăng cai: ${tileName(host.tile, state.config)} · tiền thuê ×${host.multiplier}`,
           )}
         </p>
       )}

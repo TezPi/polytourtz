@@ -5,14 +5,17 @@ import type {
   EconomyRule,
   WorldTourRule,
 } from "../board/types.js";
+import type { PlayerCosmetics } from "./cosmetics.js";
 
-export type Seat = 0 | 1 | 2 | 3;
+export type Seat = 0 | 1 | 2 | 3 | 4;
 export type SeatInfo = {
   readonly playerId: string;
   readonly name: string;
   readonly control: "human" | "bot";
   /** An individual bot's choice, frozen when its match starts. */
   readonly botDifficulty?: BotDifficulty;
+  /** Optional custom character skin and accessories chosen in the lobby. */
+  readonly cosmetics?: PlayerCosmetics;
   /**
    * The table seat (colour and corner). Defaults to the list index, so a room
    * of two or three players can keep the seats they chose in the lobby.
@@ -139,6 +142,8 @@ export type PlayerState = {
   readonly control: "human" | "bot";
   /** Missing saved fields use the match's default, then Medium. */
   readonly botDifficulty?: BotDifficulty;
+  /** Custom character skin and accessories synced for the match. */
+  readonly cosmetics?: PlayerCosmetics;
   readonly seat: Seat;
   readonly cash: number;
   readonly position: number;

@@ -5,12 +5,18 @@ import type {
   EconomyRule,
   WorldTourRule,
 } from "../board/index.js";
-import type {
-  Action,
-  BotDifficulty,
-  GameEvent,
-  PublicState,
-  Seat,
+import {
+  type Action,
+  type BotDifficulty,
+  CHARACTER_SKINS,
+  EYEWEAR_ACCESSORIES,
+  type GameEvent,
+  GEAR_ACCESSORIES,
+  HAT_ACCESSORIES,
+  OUTFIT_TONES,
+  type PlayerCosmetics,
+  type PublicState,
+  type Seat,
 } from "../engine/index.js";
 import type { DiceCommitment, DiceProof } from "../randomness/types.js";
 import type { RoomDiagnostics } from "./room-diagnostics.js";
@@ -43,17 +49,38 @@ export const RoomConfigSchema = z
   })
   .strict();
 export type RoomConfig = z.infer<typeof RoomConfigSchema>;
+export const CosmeticsSchema = z
+  .object({
+    skin: z.enum(CHARACTER_SKINS),
+    tone: z.enum(OUTFIT_TONES),
+    hat: z.enum(HAT_ACCESSORIES),
+    eyewear: z.enum(EYEWEAR_ACCESSORIES),
+    gear: z.enum(GEAR_ACCESSORIES),
+  })
+  .strict();
 export const CreateRoomSchema = z
   .object({
     name: NameSchema,
     config: RoomConfigSchema.optional(),
-    /** Server bots seated after the creator. Play opens a lobby with three. */
-    bots: z.number().int().min(0).max(3).default(0),
+    /** Server bots seated after the creator. Play opens a lobby with four. */
+    bots: z.number().int().min(0).max(4).default(0),
+    cosmetics: CosmeticsSchema.optional(),
   })
   .strict();
-export const JoinRoomSchema = z.object({ name: NameSchema }).strict();
+export const JoinRoomSchema = z
+  .object({
+    name: NameSchema,
+    cosmetics: CosmeticsSchema.optional(),
+  })
+  .strict();
 
-const seat = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+const seat = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+]);
 /** A waiting member's public id: random, and never a capability. */
 export const MemberIdSchema = z.string().regex(/^[a-f0-9]{16}$/);
 const tile = z.number().int().min(0).max(31);
@@ -120,9 +147,21 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
           })
           .strict(),
         z
-          .object({ type: z.literal("add-local"), seat, name: NameSchema })
+          .object({
+            type: z.literal("add-local"),
+            seat,
+            name: NameSchema,
+            cosmetics: CosmeticsSchema.optional(),
+          })
           .strict(),
         z.object({ type: z.literal("remove-local"), seat }).strict(),
+        z
+          .object({
+            type: z.literal("cosmetics"),
+            seat,
+            cosmetics: CosmeticsSchema,
+          })
+          .strict(),
         z.object({ type: z.literal("transfer-host"), seat }).strict(),
         z.object({ type: z.literal("lock"), locked: z.boolean() }).strict(),
         z.object({ type: z.literal("admit"), member: MemberIdSchema }).strict(),
@@ -155,8 +194,14 @@ export type LobbyOp =
   | { type: "add-bot"; seat: Seat }
   | { type: "remove-bot"; seat: Seat }
   | { type: "bot-difficulty"; seat: Seat; difficulty: BotDifficulty }
-  | { type: "add-local"; seat: Seat; name: string }
+  | {
+      type: "add-local";
+      seat: Seat;
+      name: string;
+      cosmetics?: PlayerCosmetics;
+    }
   | { type: "remove-local"; seat: Seat }
+  | { type: "cosmetics"; seat: Seat; cosmetics: PlayerCosmetics }
   | { type: "transfer-host"; seat: Seat }
   | { type: "lock"; locked: boolean }
   | { type: "admit"; member: string }
@@ -189,6 +234,8 @@ export type LobbySeat = {
   control: "human" | "bot" | null;
   /** Only bots carry an individual level; missing fields use room config. */
   botDifficulty?: BotDifficulty;
+  /** Custom skin and accessories chosen for this seat in the lobby. */
+  cosmetics?: PlayerCosmetics;
   online: boolean;
   /** A local player shares this seat's device and screen. */
   controller: Seat | null;

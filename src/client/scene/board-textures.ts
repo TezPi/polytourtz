@@ -88,9 +88,12 @@ const ROAD_CURB = mix(ASPHALT, "#dfe4dc", 0.55);
 /** Board prints use the compact amounts of a printed board: 350K, 1,2M. */
 export function boardAmount(value: number, locale: Locale) {
   const format = (amount: number, digits: number) =>
-    new Intl.NumberFormat(locale === "fr" ? "fr-CH" : "en-GB", {
-      maximumFractionDigits: digits,
-    }).format(amount);
+    new Intl.NumberFormat(
+      locale === "fr" ? "fr-CH" : locale === "vi" ? "vi-VN" : "en-GB",
+      {
+        maximumFractionDigits: digits,
+      },
+    ).format(amount);
   if (Math.abs(value) >= 1_000_000) return `${format(value / 1_000_000, 2)}M`;
   if (Math.abs(value) >= 1000) return `${format(value / 1000, 1)}K`;
   return format(value, 0);

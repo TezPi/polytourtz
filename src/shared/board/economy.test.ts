@@ -131,7 +131,7 @@ describe("economy configuration", () => {
       startingCash: 2_000_000,
       startSalary: 400_000,
       minimumPlayers: 2,
-      maximumPlayers: 4,
+      maximumPlayers: 5,
       buyoutMultiplier: 2,
       resortPrice: 200_000,
     });

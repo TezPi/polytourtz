@@ -14,6 +14,7 @@ import type {
   GameConfig,
   GameEvent,
   KeepCard,
+  PlayerCosmetics,
   PublicState,
   Seat,
 } from "../../shared/engine/index.js";
@@ -26,6 +27,7 @@ import {
   propertyRefund,
   propertyRent,
 } from "../../shared/engine/index.js";
+import type { LobbySeat } from "../../shared/protocol/index.js";
 import { clampBoardZoom } from "../board-view.js";
 import type { AnimationContext } from "../director/director.js";
 import { director, useDirector } from "../director/director.js";
@@ -37,6 +39,7 @@ import {
   tileName,
   tilePrice,
 } from "../ui/board-display.js";
+import PawnModel from "./PawnModel.js";
 import "./BoardScene.css";
 import { useAmbientMotion } from "./ambient.js";
 import {
@@ -121,6 +124,10 @@ type BoardProps = {
   onRollAnchor?: (point: { x: number; y: number }) => void;
   saleSeat?: Seat;
   saleBlocked?: boolean;
+  /** Optional lobby seat states to preview live customized skins before start. */
+  lobbySeats?: readonly LobbySeat[];
+  /** Optional home screen character customization preview for seat 0. */
+  previewCosmetics?: PlayerCosmetics;
 };
 
 function saleTargets(state: PublicState | null, seat?: Seat): number[] {
@@ -159,7 +166,13 @@ const DIE_REST: readonly [number, number, number][] = [
 const ROLL_SPOT: readonly [number, number, number] = [1.05, LAWN_TOP, 1.05];
 const DICE_DEFAULT_COLOR = "#d9473a";
 // The dice take the roller's color, brighter than the pawn so pips stay crisp.
-const DICE_COLORS = ["#e0533b", "#3a87e2", "#9564d3", "#2f9b5f"] as const;
+const DICE_COLORS = [
+  "#e0533b",
+  "#3a87e2",
+  "#9564d3",
+  "#2f9b5f",
+  "#e59624",
+] as const;
 const [BANK_X, BANK_Z] = startBankPoint();
 // Bank money leaves and lands just above the bank printed on Start.
 const BANK_POSITION: readonly [number, number, number] = [
@@ -1360,93 +1373,26 @@ function Die({
 
 function Pawn({
   seat,
+  cosmetics,
+  control,
   active,
   groupRef,
 }: {
   seat: Seat;
+  cosmetics?: PlayerCosmetics | null;
+  control?: "human" | "bot" | null;
   active: boolean;
   groupRef: (group: THREE.Group | null) => void;
 }) {
-  const color = PLAYER_COLORS[seat];
   return (
     <group ref={groupRef} position={pawnPosition(seat, 0)}>
-      {active && (
-        <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.2, 0.245, 24]} />
-          <meshBasicMaterial color="#ffcf59" toneMapped={false} />
-        </mesh>
-      )}
       <group rotation={[0, Math.PI / 4, 0]} scale={PAWN_SCALE}>
-        <mesh position={[0, 0.005, 0]} castShadow>
-          <cylinderGeometry args={[0.19, 0.2, 0.07, 16]} />
-          <meshStandardMaterial color={color} />
-        </mesh>
-        <mesh position={[0, 0.046, 0]}>
-          <cylinderGeometry args={[0.153, 0.153, 0.019, 16]} />
-          <meshStandardMaterial color="#fffaf0" />
-        </mesh>
-        {[-1, 1].map((side) => (
-          <group key={side}>
-            <mesh position={[side * 0.065, 0.12, 0.025]} castShadow>
-              <boxGeometry args={[0.085, 0.11, 0.12]} />
-              <meshStandardMaterial color="#294758" />
-            </mesh>
-            <mesh
-              position={[side * 0.17, 0.29, 0]}
-              rotation={[0, 0, side * 0.27]}
-              castShadow
-            >
-              <capsuleGeometry args={[0.05, 0.16, 3, 8]} />
-              <meshStandardMaterial color={color} />
-            </mesh>
-            <mesh position={[side * 0.19, 0.19, 0.014]}>
-              <sphereGeometry args={[0.053, 8, 6]} />
-              <meshStandardMaterial color="#f7c88b" />
-            </mesh>
-          </group>
-        ))}
-        <mesh position={[0, 0.28, 0]} castShadow>
-          <capsuleGeometry args={[0.135, 0.13, 4, 10]} />
-          <meshStandardMaterial color={color} roughness={0.75} />
-        </mesh>
-        <mesh position={[0, 0.48, 0]} castShadow>
-          <sphereGeometry args={[0.155, 12, 9]} />
-          <meshStandardMaterial color="#f7c88b" roughness={0.8} />
-        </mesh>
-        {[-1, 1].map((side) => (
-          <mesh key={side} position={[side * 0.054, 0.495, 0.14]}>
-            <sphereGeometry args={[0.018, 6, 5]} />
-            <meshBasicMaterial color="#173b45" />
-          </mesh>
-        ))}
-        <mesh position={[0, 0.443, 0.149]} rotation={[0, 0, Math.PI]}>
-          <torusGeometry args={[0.037, 0.007, 4, 8, Math.PI]} />
-          <meshBasicMaterial color="#944f35" />
-        </mesh>
-        <mesh position={[0, 0.57, 0]} castShadow>
-          {seat === 2 ? (
-            <coneGeometry args={[0.18, 0.24, 4]} />
-          ) : seat === 3 ? (
-            <boxGeometry args={[0.26, 0.11, 0.24]} />
-          ) : (
-            <sphereGeometry
-              args={[0.17, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2]}
-            />
-          )}
-          <meshStandardMaterial color={color} roughness={0.6} />
-        </mesh>
-        {seat === 0 && (
-          <mesh position={[0, 0.582, 0.15]}>
-            <boxGeometry args={[0.23, 0.024, 0.14]} />
-            <meshStandardMaterial color={color} />
-          </mesh>
-        )}
-        {seat === 1 && (
-          <mesh position={[0, 0.564, 0.154]}>
-            <boxGeometry args={[0.22, 0.045, 0.025]} />
-            <meshStandardMaterial color="#fffaf0" />
-          </mesh>
-        )}
+        <PawnModel
+          seat={seat}
+          cosmetics={cosmetics}
+          control={control}
+          active={active}
+        />
       </group>
     </group>
   );
@@ -1557,7 +1503,11 @@ function CashReserves({ state }: { state: PublicState }) {
     <group>
       <instancedMesh
         ref={notes}
-        args={[undefined, undefined, CASH_BUNDLES_PER_SEAT * 4]}
+        args={[
+          undefined,
+          undefined,
+          CASH_BUNDLES_PER_SEAT * ECONOMY.maximumPlayers,
+        ]}
         castShadow
         receiveShadow
       >
@@ -1566,27 +1516,43 @@ function CashReserves({ state }: { state: PublicState }) {
       </instancedMesh>
       <instancedMesh
         ref={faces}
-        args={[undefined, undefined, CASH_BUNDLES_PER_SEAT * 4]}
+        args={[
+          undefined,
+          undefined,
+          CASH_BUNDLES_PER_SEAT * ECONOMY.maximumPlayers,
+        ]}
       >
         <boxGeometry args={[0.95, 0.012, 0.49]} />
         <meshStandardMaterial map={texture} roughness={0.9} />
       </instancedMesh>
       <instancedMesh
         ref={pageEdges}
-        args={[undefined, undefined, CASH_BUNDLES_PER_SEAT * 8]}
+        args={[
+          undefined,
+          undefined,
+          CASH_BUNDLES_PER_SEAT * ECONOMY.maximumPlayers * 2,
+        ]}
       >
         <boxGeometry args={[0.948, 0.008, 0.488]} />
         <meshStandardMaterial color="#8da57d" roughness={0.9} />
       </instancedMesh>
       <instancedMesh
         ref={bands}
-        args={[undefined, undefined, CASH_BUNDLES_PER_SEAT * 4]}
+        args={[
+          undefined,
+          undefined,
+          CASH_BUNDLES_PER_SEAT * ECONOMY.maximumPlayers,
+        ]}
         castShadow
       >
         <boxGeometry args={[0.16, 0.145, 0.51]} />
         <meshStandardMaterial roughness={0.7} />
       </instancedMesh>
-      <instancedMesh ref={coins} args={[undefined, undefined, 24]} castShadow>
+      <instancedMesh
+        ref={coins}
+        args={[undefined, undefined, ECONOMY.maximumPlayers * 6]}
+        castShadow
+      >
         <cylinderGeometry args={[0.115, 0.115, 0.04, 12]} />
         <meshStandardMaterial
           color="#ffcf59"
@@ -1631,7 +1597,11 @@ function HeldCards({ state, card }: { state: PublicState; card: KeepCard }) {
     invalidate();
   }, [state, card, transform, invalidate]);
   return (
-    <instancedMesh ref={cards} args={[undefined, undefined, 4]} castShadow>
+    <instancedMesh
+      ref={cards}
+      args={[undefined, undefined, ECONOMY.maximumPlayers]}
+      castShadow
+    >
       <boxGeometry args={[0.36, 0.012, 0.5]} />
       <meshStandardMaterial map={texture} roughness={0.55} />
     </instancedMesh>
@@ -2677,21 +2647,46 @@ function SceneContent(props: BoardProps) {
         />
         {(state && !preview
           ? state.players.map((player) => player.seat)
-          : ([0, 1, 2, 3] as const)
-        ).map((seat) => (
-          <Pawn
-            key={seat}
-            seat={seat}
-            active={
-              !preview &&
-              state?.status === "active" &&
-              (state.pending?.seat ?? state.activeSeat) === seat
-            }
-            groupRef={(group) => {
-              pawns.current[seat] = group;
-            }}
-          />
-        ))}
+          : ([0, 1, 2, 3, 4] as const)
+        ).map((seat) => {
+          const matchPlayer =
+            state && !preview
+              ? state.players.find((entry) => entry.seat === seat)
+              : undefined;
+          const lobbyEntry = props.lobbySeats?.find(
+            (entry) => entry.seat === seat,
+          );
+          const cosmetics = matchPlayer
+            ? matchPlayer.cosmetics
+            : lobbyEntry
+              ? lobbyEntry.cosmetics
+              : seat === 0
+                ? props.previewCosmetics
+                : undefined;
+          const control = matchPlayer
+            ? matchPlayer.control
+            : lobbyEntry
+              ? lobbyEntry.control
+              : seat === 0
+                ? "human"
+                : "bot";
+          return (
+            <Pawn
+              key={seat}
+              seat={seat}
+              cosmetics={cosmetics}
+              control={control}
+              active={
+                !preview &&
+                state?.status === "active" &&
+                (state.pending?.seat ?? state.activeSeat) === seat
+              }
+              groupRef={(group) => {
+                pawns.current[seat] = group;
+              }}
+            />
+          );
+        })}
         {DIE_REST.map((position, index) => (
           <Die
             key={position.join(",")}
@@ -2847,6 +2842,7 @@ function SaleLabels({
             aria-label={t(
               `Choisir ${tileName(tile, state.config)} à vendre · ${amount}`,
               `Choose ${tileName(tile, state.config)} to sell · ${amount}`,
+              `Chọn bán ${tileName(tile, state.config)} · ${amount}`,
             )}
             aria-pressed={chosen}
             disabled={saleBlocked}
