@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
+  "buildCommand": "pnpm exec vite build",
+  "outputDirectory": "dist/client",
+  "functions": {
+    "api/**": {
+      "maxDuration": 30,
+      "excludeFiles": "{public,test,e2e,dist,.wrangler}/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index?__path=/api/$1"
+    },
+    {
+      "source": "/((?!api/|assets/|icons/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

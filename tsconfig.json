@@ -14,6 +14,9 @@
       "path": "./tsconfig.worker.json"
     },
     {
+      "path": "./tsconfig.vercel.json"
+    },
+    {
       "path": "./tsconfig.e2e.json"
     },
     {

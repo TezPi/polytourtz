@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.1",
+    "@vercel/blob": "^2.9.0",
     "drand-client": "^1.4.2",
     "gsap": "^3.15.0",
     "hono": "^4.13.11",

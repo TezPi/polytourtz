@@ -24,6 +24,7 @@ import { PROTOCOL_VERSION } from "../../shared/protocol/index.js";
 import { DEBUG_PING_RESPONSE } from "../../shared/protocol/room-diagnostics.js";
 import { director } from "../director/director.js";
 import { translate } from "../i18n.js";
+import { createRoomSocket } from "./http-room-socket.js";
 import { RoomDebugController } from "./room-debug.js";
 import { parseRoomResponse, RoomCredentialsSchema } from "./room-response.js";
 import { parseServerMessage } from "./server-message.js";
@@ -166,11 +167,7 @@ export function useRoom(credentials: RoomCredentials | null) {
     function connect() {
       if (disposed || !credentials) return;
       updateConnection(attempt || retry > 0 ? "reconnecting" : "connecting");
-      const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-      const ws = new WebSocket(
-        `${scheme}://${window.location.host}/ws/room/${credentials.roomCode}`,
-        ["polytour", `seat.${credentials.token}`],
-      );
+      const ws = createRoomSocket(credentials.roomCode, credentials.token);
       socket.current = ws;
       debugController.setSocket(ws);
       let welcomed = false;
