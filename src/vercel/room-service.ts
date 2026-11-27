@@ -270,24 +270,25 @@ function buildLobbyState(doc: VercelRoomDoc, now: number): LobbyState {
       ? "finished"
       : "playing"
     : "lobby";
-  const seats: LobbySeat[] = [...doc.seats]
-    .sort((a, b) => a.seat - b.seat)
-    .map((entry) => {
-      const controller =
-        doc.localSeats.find((local) => local.seat === entry.seat)?.controller ??
-        null;
-      return {
-        seat: entry.seat,
-        name: entry.name,
-        control: entry.control,
-        online: isControllerOnline(doc, entry.seat, now),
-        controller,
-        ...(entry.control === "bot" && entry.botDifficulty
-          ? { botDifficulty: entry.botDifficulty }
-          : {}),
-        ...(entry.cosmetics ? { cosmetics: entry.cosmetics } : {}),
-      };
-    });
+  const seats: LobbySeat[] = SEAT_ORDER.map((seat) => {
+    const entry = doc.seats.find((candidate) => candidate.seat === seat);
+    const controller =
+      doc.localSeats.find((local) => local.seat === seat)?.controller ?? null;
+    return {
+      seat,
+      name: entry?.name ?? "Place libre",
+      control: entry?.control ?? null,
+      online: entry ? isControllerOnline(doc, seat, now) : false,
+      controller,
+      ...(entry?.control === "bot"
+        ? {
+            botDifficulty:
+              entry.botDifficulty ?? doc.config.botDifficulty ?? "medium",
+          }
+        : {}),
+      ...(entry?.cosmetics ? { cosmetics: entry.cosmetics } : {}),
+    };
+  });
   const rules = doc.saved?.state.config ?? DEFAULT_GAME_CONFIG;
   return {
     roomCode: doc.roomCode,
@@ -1621,7 +1622,7 @@ export class VercelRoomService {
           }
         }
         if (doc.seats.length < ECONOMY.minimumPlayers) {
-          return reject("need-more-players");
+          return reject("players-required");
         }
         const sortedSeats = [...doc.seats].sort((a, b) => a.seat - b.seat);
         const engineSeats: SeatInfo[] = sortedSeats.map((s) => ({

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseServerMessage } from "../src/client/net/server-message.js";
 import type {
   LobbyState,
   RoomCredentials,
@@ -363,8 +364,71 @@ describe("Vercel HTTP RPC room backend", () => {
       `/api/rooms/${code}`,
     );
     expect(lobbyAfter.status).toBe(200);
-    expect(lobbyAfter.body.lobby.seats).toHaveLength(4);
+    expect(lobbyAfter.body.lobby.seats).toHaveLength(5);
+    expect(
+      lobbyAfter.body.lobby.seats.filter((s) => s.control !== null),
+    ).toHaveLength(4);
     expect(lobbyAfter.body.lobby.seats[0]?.name).toBe("F1");
+    expect(lobbyAfter.body.lobby.seats[4]?.control).toBeNull();
+  });
+
+  it("validates 0-bot room welcome and add-bot RPC payloads through client parseServerMessage", async () => {
+    const app = createVercelApp(createMemoryRoomStore());
+    const host = await apiJson<RoomCredentials>(app, "/api/rooms", {
+      method: "POST",
+      body: JSON.stringify({ name: "Solo", bots: 0 }),
+    });
+    expect(host.status).toBe(201);
+
+    const syncRes = await apiJson<{ messages: ServerMessage[] }>(
+      app,
+      `/api/rooms/${host.body.roomCode}/rpc`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${host.body.token}` },
+        body: JSON.stringify({ message: { type: "sync", lastSeq: null } }),
+      },
+    );
+    expect(syncRes.status).toBe(200);
+    const parsedWelcome = syncRes.body.messages.map((m) =>
+      parseServerMessage(JSON.stringify(m)),
+    );
+    const welcome = parsedWelcome.find((m) => m.type === "welcome");
+    expect(welcome?.type).toBe("welcome");
+    if (welcome?.type === "welcome") {
+      expect(welcome.lobby.seats).toHaveLength(5);
+      expect(welcome.lobby.seats[0]?.control).toBe("human");
+      expect(
+        welcome.lobby.seats.slice(1).every((s) => s.control === null),
+      ).toBe(true);
+    }
+
+    const addBotRes = await apiJson<{ messages: ServerMessage[] }>(
+      app,
+      `/api/rooms/${host.body.roomCode}/rpc`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${host.body.token}` },
+        body: JSON.stringify({
+          message: {
+            type: "lobby",
+            id: "add-bot-1",
+            op: { type: "add-bot", seat: 1 },
+          },
+          lastSeq: 0,
+        }),
+      },
+    );
+    expect(addBotRes.status).toBe(200);
+    const parsedBot = addBotRes.body.messages.map((m) =>
+      parseServerMessage(JSON.stringify(m)),
+    );
+    expect(parsedBot.some((m) => m.type === "ack")).toBe(true);
+    const updatedLobby = parsedBot.find((m) => m.type === "lobby");
+    expect(updatedLobby?.type).toBe("lobby");
+    if (updatedLobby?.type === "lobby") {
+      expect(updatedLobby.lobby.seats[1]?.control).toBe("bot");
+    }
   });
 
   it("retries transient CAS conflicts and keeps background poll syncs 200 under write contention", async () => {
