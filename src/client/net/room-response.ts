@@ -22,7 +22,7 @@ const roomError = z.object({
   error: z.string().optional(),
   message: z.string().trim().min(1).max(300).optional(),
 });
-const ERROR_MESSAGES: Record<string, readonly [string, string]> = {
+const ERROR_MESSAGES: Record<string, readonly [string, string, string?]> = {
   "room-not-found": [
     "Cette salle n’existe pas. Vérifiez les six caractères du code.",
     "This room does not exist. Check the six-character code.",
@@ -34,6 +34,7 @@ const ERROR_MESSAGES: Record<string, readonly [string, string]> = {
   "concurrent-update": [
     "Un conflit temporaire est survenu. Réessayez dans un instant.",
     "A temporary conflict occurred. Please try again shortly.",
+    "Đang có xung đột tạm thời. Vui lòng thử lại sau giây lát.",
   ],
   "game-started": [
     "La partie a déjà commencé. Rejoignez un autre salon.",

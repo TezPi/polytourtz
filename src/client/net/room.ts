@@ -70,31 +70,47 @@ export async function enterRoom(
       ? { name, ...(cosmetics ? { cosmetics } : {}) }
       : { name, config, bots, ...(cosmetics ? { cosmetics } : {}) },
   );
+  const networkError = () =>
+    new Error(
+      translate(
+        "Impossible de joindre le serveur de jeu. Vérifiez votre connexion puis réessayez.",
+        "Unable to reach the game server. Check your connection and try again.",
+      ),
+    );
   let response: Response | undefined;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    let candidate: Response;
     try {
-      response = await fetch(url, {
+      candidate = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payload,
       });
     } catch {
-      throw new Error(
-        translate(
-          "Impossible de joindre le serveur de jeu. Vérifiez votre connexion puis réessayez.",
-          "Unable to reach the game server. Check your connection and try again.",
-        ),
-      );
+      throw networkError();
     }
-    // Retry transient Blob CAS conflicts (HTTP 409 concurrent-update) that
-    // the Vercel backend can emit when reads lag behind writes.
-    if (response.status === 409 && attempt + 1 < 3) {
-      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-      continue;
+    response = candidate;
+    // Retry transient Blob CAS conflicts (HTTP 409 concurrent-update) without
+    // delaying permanent 409 outcomes like room-full or game-started.
+    if (candidate.status === 409 && attempt + 1 < 5) {
+      let errorCode: string | undefined;
+      try {
+        const cloned = (await candidate.clone().json()) as { error?: unknown };
+        if (typeof cloned?.error === "string") errorCode = cloned.error;
+      } catch {
+        /* Ignore parse failures and retry unstructured 409 responses. */
+      }
+      if (errorCode === undefined || errorCode === "concurrent-update") {
+        await new Promise((r) =>
+          setTimeout(r, 150 * (attempt + 1) + Math.floor(Math.random() * 80)),
+        );
+        continue;
+      }
     }
     break;
   }
-  const body = await parseRoomResponse(response!);
+  if (!response) throw networkError();
+  const body = await parseRoomResponse(response);
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(body));
   return body;
 }
@@ -530,13 +546,12 @@ export function useRoom(credentials: RoomCredentials | null) {
       if (response.status !== 401 && response.status !== 404) {
         if (response.status !== 200) throw new Error("Room departure failed");
         const body: unknown = await response.json();
-        if (
-          !body ||
-          typeof body !== "object" ||
-          !("ok" in body) ||
-          body.ok !== true
-        )
-          throw new Error("Invalid room departure response");
+        const confirmed =
+          body !== null &&
+          typeof body === "object" &&
+          (("ok" in body && body.ok === true) ||
+            ("left" in body && body.left === true));
+        if (!confirmed) throw new Error("Invalid room departure response");
       }
       disconnect.current?.();
       setConnection("offline");

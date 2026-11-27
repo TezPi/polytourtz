@@ -164,38 +164,63 @@ export function createRoomSocket(roomCode: string, token: string): WebSocket {
   function enqueueRpc(body: Record<string, unknown>, fromPoll: boolean): void {
     queue = queue.then(async () => {
       if (state !== OPEN) return;
-      abortController = new AbortController();
-      try {
-        const response = await fetch(`/api/rooms/${roomCode}/rpc`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-          signal: abortController.signal,
-        });
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
         if (state !== OPEN) return;
-        if (response.status === 401 || response.status === 403) {
-          closeLocal(4003, "Not admitted");
+        abortController = new AbortController();
+        try {
+          response = await fetch(`/api/rooms/${roomCode}/rpc`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+            signal: abortController.signal,
+          });
+        } catch (error) {
+          if (state !== OPEN) return;
+          if (error instanceof DOMException && error.name === "AbortError")
+            return;
+          dispatch("error", new Event("error"));
+          closeLocal(1006, "Network error");
           return;
         }
-        if (response.status === 404) {
-          closeLocal(1000, "Room expired");
-          return;
+        if (state !== OPEN) return;
+        if (
+          (response.status === 409 || response.status === 503) &&
+          attempt + 1 < 4
+        ) {
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              150 * (attempt + 1) + Math.floor(Math.random() * 80),
+            ),
+          );
+          continue;
         }
-        if (!response.ok) {
-          if (!fromPoll) dispatch("error", new Event("error"));
-          closeLocal(1006, `HTTP ${response.status}`);
-          return;
-        }
+        break;
+      }
+      if (!response || state !== OPEN) return;
+      if (response.status === 401 || response.status === 403) {
+        closeLocal(4003, "Not admitted");
+        return;
+      }
+      if (response.status === 404) {
+        closeLocal(1000, "Room expired");
+        return;
+      }
+      if (!response.ok) {
+        if (!fromPoll) dispatch("error", new Event("error"));
+        closeLocal(1006, `HTTP ${response.status}`);
+        return;
+      }
+      try {
         const payload = (await response.json()) as RpcPayload;
         trackMessages(payload);
         if (state === OPEN) schedulePoll();
-      } catch (error) {
+      } catch {
         if (state !== OPEN) return;
-        if (error instanceof DOMException && error.name === "AbortError")
-          return;
         dispatch("error", new Event("error"));
         closeLocal(1006, "Network error");
       }

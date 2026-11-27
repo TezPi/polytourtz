@@ -23,40 +23,100 @@ function isConflictError(error: unknown): boolean {
   );
 }
 
+type CachedEntry = {
+  readonly raw: string;
+  readonly etag: string;
+  readonly rev: number;
+  readonly createdAt: number;
+};
+
 /**
- * Private Vercel Blob room persistence with immediate reads and ETag CAS.
+ * Private Vercel Blob room persistence with ETag CAS and revision-checked
+ * conditional reads.
  *
- * A write-through in-memory cache keeps the latest doc + etag after every
- * successful `create()` / `replace()`.  Subsequent `load()` calls within the
- * same serverless function instance return the cached version, eliminating the
- * most common cause of spurious CAS failures: Blob `get()` returning a stale
- * etag even with `useCache: false` due to eventual-consistency lag.
+ * Uses `ifNoneMatch` on `get()` so every read validates against Blob origin
+ * while skipping body transfer when unchanged (`304`). Comparing monotonic
+ * `rev` + `createdAt` prevents same-instance stale-read regressions right
+ * after `create()` / `replace()`, and tracking rejected ETags avoids wasting
+ * CAS writes while `get()` catches up after a cross-instance conflict.
  */
 export function createBlobRoomStore(): RoomStore {
-  const cache = new Map<string, { raw: string; etag: string }>();
+  const cache = new Map<string, CachedEntry>();
+  const staleEtags = new Map<string, string>();
+
+  async function fetchFresh(roomCode: string, ifNoneMatch?: string) {
+    return get(roomBlobPath(roomCode), {
+      access: "private",
+      useCache: false,
+      ...(ifNoneMatch ? { ifNoneMatch } : {}),
+    });
+  }
 
   return {
     async load(roomCode) {
       const key = roomCode.toUpperCase();
       const cached = cache.get(key);
-      if (cached) {
-        return {
-          data: JSON.parse(cached.raw) as VercelRoomDoc,
-          etag: cached.etag,
-        };
-      }
+      const staleEtag = staleEtags.get(key);
       try {
-        const result = await get(roomBlobPath(roomCode), {
-          access: "private",
-          useCache: false,
-        });
-        if (result?.statusCode !== 200) return null;
-        const text = await new Response(result.stream).text();
-        const etag = result.blob.etag;
-        cache.set(key, { raw: text, etag });
-        return { data: JSON.parse(text) as VercelRoomDoc, etag };
+        let result = await fetchFresh(
+          roomCode,
+          !staleEtag && cached?.etag ? cached.etag : undefined,
+        );
+        if (result?.statusCode === 304 && cached) {
+          return {
+            data: JSON.parse(cached.raw) as VercelRoomDoc,
+            etag: cached.etag,
+          };
+        }
+        if (result?.statusCode !== 200) {
+          cache.delete(key);
+          return null;
+        }
+        let text = await new Response(result.stream).text();
+        let etag = result.blob.etag;
+        if (staleEtag && etag === staleEtag) {
+          // Origin already rejected this ETag; wait briefly once for Blob read
+          // propagation rather than immediately colliding with the same ETag.
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const retried = await fetchFresh(roomCode);
+          if (retried?.statusCode === 200) {
+            result = retried;
+            text = await new Response(retried.stream).text();
+            etag = retried.blob.etag;
+          } else if (!retried) {
+            cache.delete(key);
+            return null;
+          }
+        }
+        const remote = JSON.parse(text) as VercelRoomDoc;
+        const remoteRev = remote.rev ?? 0;
+        if (
+          cached &&
+          remote.createdAt === cached.createdAt &&
+          remoteRev < cached.rev
+        ) {
+          return {
+            data: JSON.parse(cached.raw) as VercelRoomDoc,
+            etag: cached.etag,
+          };
+        }
+        if (staleEtag && etag !== staleEtag) {
+          staleEtags.delete(key);
+        }
+        if (!staleEtag || etag !== staleEtag) {
+          cache.set(key, {
+            raw: text,
+            etag,
+            rev: remoteRev,
+            createdAt: remote.createdAt,
+          });
+        }
+        return { data: remote, etag };
       } catch (error) {
-        if (error instanceof BlobNotFoundError) return null;
+        if (error instanceof BlobNotFoundError) {
+          cache.delete(key);
+          return null;
+        }
         throw error;
       }
     },
@@ -69,7 +129,13 @@ export function createBlobRoomStore(): RoomStore {
           allowOverwrite: false,
           contentType: "application/json",
         });
-        cache.set(key, { raw, etag: blob.etag });
+        staleEtags.delete(key);
+        cache.set(key, {
+          raw,
+          etag: blob.etag,
+          rev: doc.rev ?? 0,
+          createdAt: doc.createdAt,
+        });
         return { data: doc, etag: blob.etag };
       } catch (error) {
         if (isConflictError(error)) {
@@ -88,19 +154,27 @@ export function createBlobRoomStore(): RoomStore {
           ifMatch: expectedEtag,
           contentType: "application/json",
         });
-        cache.set(key, { raw, etag: blob.etag });
+        staleEtags.delete(key);
+        cache.set(key, {
+          raw,
+          etag: blob.etag,
+          rev: doc.rev ?? 0,
+          createdAt: doc.createdAt,
+        });
         return { data: doc, etag: blob.etag };
       } catch (error) {
         if (isConflictError(error)) {
-          // Invalidate so the next retry fetches fresh from origin.
           cache.delete(key);
+          staleEtags.set(key, expectedEtag);
           throw new RoomConflictError("ETag mismatch");
         }
         throw error;
       }
     },
     async remove(roomCode) {
-      cache.delete(roomCode.toUpperCase());
+      const key = roomCode.toUpperCase();
+      cache.delete(key);
+      staleEtags.delete(key);
       try {
         await del(roomBlobPath(roomCode));
       } catch (error) {

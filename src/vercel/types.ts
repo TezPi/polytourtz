@@ -51,6 +51,7 @@ export type PendingDice = {
 
 export type VercelRoomDoc = {
   readonly version: 1;
+  readonly rev?: number;
   readonly roomCode: string;
   readonly config: RoomConfig;
   readonly createdAt: number;

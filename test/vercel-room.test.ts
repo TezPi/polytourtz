@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
+  LobbyState,
   RoomCredentials,
   ServerMessage,
 } from "../src/shared/protocol/index.js";
 import { createVercelApp } from "../src/vercel/app.js";
-import { createMemoryRoomStore } from "../src/vercel/store.js";
+import {
+  createMemoryRoomStore,
+  RoomConflictError,
+  type RoomStore,
+} from "../src/vercel/store.js";
 
 const ORIGIN = "https://polytourtz.vercel.app";
 
@@ -302,5 +307,128 @@ describe("Vercel HTTP RPC room backend", () => {
     );
     expect(unauth.status).toBe(401);
     expect(unauth.body.error).toBe("unauthorized");
+  });
+
+  it("seats friends into bot places on Play rooms, rejects 6th player, and returns { ok: true } on leave", async () => {
+    const app = createVercelApp(createMemoryRoomStore());
+    const host = await apiJson<RoomCredentials>(app, "/api/rooms", {
+      method: "POST",
+      body: JSON.stringify({ name: "Host", bots: 4 }),
+    });
+    expect(host.status).toBe(201);
+    const code = host.body.roomCode;
+
+    for (const [name, seat] of [
+      ["F1", 1],
+      ["F2", 2],
+      ["F3", 3],
+      ["F4", 4],
+    ] as const) {
+      const joined = await apiJson<RoomCredentials>(
+        app,
+        `/api/rooms/${code}/join`,
+        {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        },
+      );
+      expect(joined.status).toBe(200);
+      expect(joined.body.seat).toBe(seat);
+    }
+
+    const full = await apiJson<{ error: string }>(
+      app,
+      `/api/rooms/${code}/join`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "F5" }),
+      },
+    );
+    expect(full.status).toBe(409);
+    expect(full.body.error).toBe("room-full");
+
+    const leaveHost = await apiJson<{ ok: boolean }>(
+      app,
+      `/api/rooms/${code}/leave`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${host.body.token}` },
+      },
+    );
+    expect(leaveHost.status).toBe(200);
+    expect(leaveHost.body).toEqual({ ok: true });
+
+    const lobbyAfter = await apiJson<{ lobby: LobbyState }>(
+      app,
+      `/api/rooms/${code}`,
+    );
+    expect(lobbyAfter.status).toBe(200);
+    expect(lobbyAfter.body.lobby.seats).toHaveLength(4);
+    expect(lobbyAfter.body.lobby.seats[0]?.name).toBe("F1");
+  });
+
+  it("retries transient CAS conflicts and keeps background poll syncs 200 under write contention", async () => {
+    const inner = createMemoryRoomStore();
+    let forcedConflicts = 0;
+    let blockAllReplaces = false;
+    let replaceCalls = 0;
+    const flakyStore: RoomStore = {
+      load: (code) => inner.load(code),
+      create: (code, doc) => inner.create(code, doc),
+      remove: (code) => inner.remove(code),
+      async replace(code, doc, expectedEtag) {
+        replaceCalls += 1;
+        if (blockAllReplaces) throw new RoomConflictError("Contention");
+        if (forcedConflicts > 0) {
+          forcedConflicts -= 1;
+          throw new RoomConflictError("Simulated stale read");
+        }
+        return inner.replace(code, doc, expectedEtag);
+      },
+    };
+    const app = createVercelApp(flakyStore);
+    let fakeNow = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+    try {
+      const host = await apiJson<RoomCredentials>(app, "/api/rooms", {
+        method: "POST",
+        body: JSON.stringify({ name: "Host", bots: 4 }),
+      });
+      const code = host.body.roomCode;
+
+      // 3 transient conflicts still succeed via server CAS retry.
+      forcedConflicts = 3;
+      const guest = await apiJson<RoomCredentials>(
+        app,
+        `/api/rooms/${code}/join`,
+        { method: "POST", body: JSON.stringify({ name: "Guest" }) },
+      );
+      expect(guest.status).toBe(200);
+      expect(guest.body.seat).toBe(1);
+      expect(replaceCalls).toBe(4);
+
+      // Advance past HEARTBEAT_WRITE_INTERVAL_MS so the background poll tries
+      // to write a heartbeat, collides continuously, and degrades to 200.
+      fakeNow += 10_000;
+      blockAllReplaces = true;
+      replaceCalls = 0;
+      const poll = await apiJson<{
+        messages: ServerMessage[];
+        lobbyDigest: string;
+      }>(app, `/api/rooms/${code}/rpc`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${host.body.token}` },
+        body: JSON.stringify({
+          message: { type: "sync", lastSeq: 0 },
+          lastSeq: 0,
+          poll: true,
+        }),
+      });
+      expect(replaceCalls).toBe(10);
+      expect(poll.status).toBe(200);
+      expect(poll.body.lobbyDigest.length).toBeGreaterThan(0);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

@@ -54,13 +54,14 @@ const LOBBY_LIFETIME_MS = 7_200_000;
 const FINISHED_LIFETIME_MS = 600_000;
 const ONLINE_WINDOW_MS = 15_000;
 const ATTENDANCE_WINDOW_MS = 20_000;
-const HEARTBEAT_WRITE_INTERVAL_MS = 4_000;
+const HEARTBEAT_WRITE_INTERVAL_MS = 8_000;
 const GRACE_MS = 60_000;
 const MAX_SEATS = 5;
+const MAX_WAITING = 6;
 const MAX_REPLAY_GAP = 500;
 const MAX_STORED_EVENTS = 1_000;
 const MAX_STORED_COMMANDS = 400;
-const MAX_CAS_RETRIES = 6;
+const MAX_CAS_RETRIES = 10;
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const SEAT_ORDER: readonly Seat[] = [0, 1, 2, 3, 4];
 
@@ -83,6 +84,7 @@ type Actor =
 
 type MutableDoc = {
   version: 1;
+  rev?: number;
   roomCode: string;
   config: RoomConfig;
   createdAt: number;
@@ -160,6 +162,25 @@ function freeSeat(doc: VercelRoomDoc): Seat | null {
   return null;
 }
 
+/** A newcomer takes an open seat first, then replaces a bot seat. */
+function freeHumanSeat(doc: VercelRoomDoc): Seat | null {
+  const empty = freeSeat(doc);
+  if (empty !== null) return empty;
+  const bot = [...doc.seats]
+    .sort((a, b) => a.seat - b.seat)
+    .find((entry) => entry.control === "bot");
+  return bot?.seat ?? null;
+}
+
+function assignHumanSeat(
+  doc: MutableDoc,
+  seat: Seat,
+  entry: StoredRoomSeat,
+): void {
+  doc.seats = doc.seats.filter((candidate) => candidate.seat !== seat);
+  doc.seats.push(entry);
+}
+
 function isControllerOnline(
   doc: VercelRoomDoc,
   seat: Seat,
@@ -223,9 +244,9 @@ function seatWaitingMembers(doc: MutableDoc): boolean {
   let promoted = false;
   const remaining: StoredRoomMember[] = [];
   for (const member of doc.members) {
-    const openSeat = member.approved ? freeSeat(doc) : null;
+    const openSeat = member.approved ? freeHumanSeat(doc) : null;
     if (openSeat !== null) {
-      doc.seats.push({
+      assignHumanSeat(doc, openSeat, {
         seat: openSeat,
         name: member.name,
         control: "human",
@@ -294,14 +315,12 @@ function buildLobbyState(doc: VercelRoomDoc, now: number): LobbyState {
     startLandingBonus:
       rules.startLandingBonus ?? DEFAULT_GAME_CONFIG.startLandingBonus,
     seats,
-    waiting: doc.members
-      .filter((member) => !member.approved || doc.saved !== null)
-      .map((member) => ({
-        id: member.id,
-        name: member.name,
-        approved: member.approved,
-        online: now - member.lastSeenAt < ONLINE_WINDOW_MS,
-      })),
+    waiting: doc.members.map((member) => ({
+      id: member.id,
+      name: member.name,
+      approved: member.approved,
+      online: now - member.lastSeenAt < ONLINE_WINDOW_MS,
+    })),
   };
 }
 
@@ -752,6 +771,102 @@ function randomnessKey(pending: PendingDice | null): string {
   return `${pending.atSeq}:${pending.commitment.availableAt}:${pending.commitment.round ?? "s"}`;
 }
 
+function resolveActor(
+  doc: VercelRoomDoc,
+  tokenHash: string,
+):
+  | { readonly kind: "seat"; readonly seat: Seat; readonly row: StoredRoomSeat }
+  | {
+      readonly kind: "member";
+      readonly memberId: string;
+      readonly row: StoredRoomMember;
+    }
+  | null {
+  const seatRow = doc.seats.find((s) => s.tokenHash === tokenHash);
+  if (seatRow) return { kind: "seat", seat: seatRow.seat, row: seatRow };
+  const memberRow = doc.members.find((m) => m.tokenHash === tokenHash);
+  if (memberRow)
+    return { kind: "member", memberId: memberRow.id, row: memberRow };
+  return null;
+}
+
+function digestOfDoc(doc: VercelRoomDoc, actor: Actor, now: number) {
+  const lobby = buildLobbyState(doc, now);
+  const lobbyDigest = JSON.stringify(lobby);
+  const youDigest =
+    actor.kind === "seat" ? `s:${actor.seat}` : `m:${actor.memberId}`;
+  const rndDigest = randomnessKey(doc.pendingDice);
+  return { lobby, lobbyDigest, youDigest, rndDigest };
+}
+
+function buildSyncRpcResponse(
+  doc: VercelRoomDoc,
+  actor: Actor,
+  clientLastSeq: number | null,
+  now: number,
+  options: RpcOptions,
+  messages: ServerMessage[],
+): RpcResponse {
+  const d = digestOfDoc(doc, actor, now);
+  const youChanged =
+    options.knownYou !== undefined &&
+    options.knownYou !== null &&
+    options.knownYou !== d.youDigest;
+  const returnedToLobby =
+    options.poll === true &&
+    clientLastSeq !== null &&
+    clientLastSeq > 0 &&
+    doc.saved === null;
+  const needsSnapshotReset =
+    options.poll === true &&
+    clientLastSeq !== null &&
+    doc.saved !== null &&
+    (doc.saved.seq - clientLastSeq > MAX_REPLAY_GAP ||
+      clientLastSeq > doc.saved.seq ||
+      (doc.events[0] !== undefined && clientLastSeq < doc.events[0].seq - 1));
+
+  if (!options.poll || youChanged || returnedToLobby || needsSnapshotReset) {
+    const welcome = buildWelcomeMessage(
+      doc,
+      actor,
+      returnedToLobby || needsSnapshotReset ? null : clientLastSeq,
+      now,
+    );
+    messages.push(welcome);
+    if (
+      welcome.snapshot === null &&
+      clientLastSeq !== null &&
+      doc.saved &&
+      clientLastSeq < doc.saved.seq
+    ) {
+      const replayMsg = buildEventsMessage(doc, clientLastSeq);
+      if (replayMsg) messages.push(replayMsg);
+    }
+  } else {
+    if (clientLastSeq !== null && doc.saved && clientLastSeq < doc.saved.seq) {
+      const replayMsg = buildEventsMessage(doc, clientLastSeq);
+      if (replayMsg) messages.push(replayMsg);
+    }
+    if (d.rndDigest !== options.knownRandomness && doc.pendingDice) {
+      messages.push({
+        type: "randomness",
+        status: "committed",
+        commitment: doc.pendingDice.commitment,
+      });
+    }
+    if (d.lobbyDigest !== options.knownLobby) {
+      messages.push({ type: "lobby", lobby: d.lobby });
+    }
+  }
+
+  return {
+    messages,
+    lobbyDigest: d.lobbyDigest,
+    youDigest: d.youDigest,
+    randomnessDigest: d.rndDigest,
+  };
+}
+
 export type RpcOptions = {
   readonly poll?: boolean;
   readonly knownLobby?: string | null;
@@ -795,6 +910,7 @@ export class VercelRoomService {
       readonly result: T | RoomServiceError;
     }>,
   ): Promise<T | RoomServiceError> {
+    let transientErrors = 0;
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
       const entry = await this.loadValid(roomCode, now);
       if (!entry) return { status: 404, code: "room-not-found" };
@@ -805,22 +921,28 @@ export class VercelRoomService {
         return outcome.result;
       }
       if (!outcome.dirty) return outcome.result;
+      doc.rev = (entry.data.rev ?? 0) + 1;
       try {
         await this.store.replace(roomCode, doc, entry.etag);
         return outcome.result;
       } catch (error) {
-        if (
-          error instanceof RoomConflictError &&
-          attempt + 1 < MAX_CAS_RETRIES
-        ) {
-          // Brief progressive delay lets Blob eventual-consistency settle
-          // when the in-memory write-through cache was cold (cross-instance).
+        if (error instanceof RoomConflictError) {
+          if (attempt + 1 < MAX_CAS_RETRIES) {
+            const base = Math.min(40 * 1.45 ** attempt, 450);
+            const jitter = Math.floor(Math.random() * 60);
+            await new Promise((resolve) => setTimeout(resolve, base + jitter));
+            continue;
+          }
+          return { status: 409, code: "concurrent-update" };
+        }
+        transientErrors += 1;
+        if (transientErrors <= 2 && attempt + 1 < MAX_CAS_RETRIES) {
           await new Promise((resolve) =>
-            setTimeout(resolve, 25 * (attempt + 1)),
+            setTimeout(resolve, 60 * transientErrors),
           );
           continue;
         }
-        return { status: 409, code: "concurrent-update" };
+        return { status: 503, code: "room-service-unavailable" };
       }
     }
     return { status: 409, code: "concurrent-update" };
@@ -867,6 +989,7 @@ export class VercelRoomService {
       const roomCode = generateRoomCode();
       const doc: VercelRoomDoc = {
         version: 1,
+        rev: 1,
         roomCode,
         config,
         createdAt: now,
@@ -912,24 +1035,34 @@ export class VercelRoomService {
     const token = randomToken();
     const tokenHash = await hashToken(token);
     return this.mutate<RoomCredentials>(roomCode, now, async (doc) => {
+      const seat = freeHumanSeat(doc);
+      if (seat === null) {
+        return {
+          dirty: false,
+          result: { status: 409, code: "room-full" },
+        };
+      }
       if (!doc.saved && !doc.locked) {
-        const seat = freeSeat(doc);
-        if (seat !== null) {
-          doc.seats.push({
-            seat,
-            name: input.name,
-            control: "human",
-            tokenHash,
-            botDifficulty: null,
-            ...(input.cosmetics ? { cosmetics: input.cosmetics } : {}),
-            lastSeenAt: now,
-          });
-          doc.expiresAt = now + LOBBY_LIFETIME_MS;
-          return {
-            dirty: true,
-            result: { roomCode: doc.roomCode, seat, token },
-          };
-        }
+        assignHumanSeat(doc, seat, {
+          seat,
+          name: input.name,
+          control: "human",
+          tokenHash,
+          botDifficulty: null,
+          ...(input.cosmetics ? { cosmetics: input.cosmetics } : {}),
+          lastSeenAt: now,
+        });
+        doc.expiresAt = now + LOBBY_LIFETIME_MS;
+        return {
+          dirty: true,
+          result: { roomCode: doc.roomCode, seat, token },
+        };
+      }
+      if (doc.members.length >= MAX_WAITING) {
+        return {
+          dirty: false,
+          result: { status: 409, code: "room-full" },
+        };
       }
       doc.memberSeq += 1;
       const memberId = `m${doc.memberSeq}`;
@@ -956,9 +1089,9 @@ export class VercelRoomService {
     roomCode: string,
     token: string,
     now = Date.now(),
-  ): Promise<{ readonly left: true } | RoomServiceError> {
+  ): Promise<{ readonly ok: true } | RoomServiceError> {
     const tokenHash = await hashToken(token);
-    return this.mutate<{ readonly left: true }>(roomCode, now, async (doc) => {
+    return this.mutate<{ readonly ok: true }>(roomCode, now, async (doc) => {
       const seatRow = doc.seats.find((s) => s.tokenHash === tokenHash);
       const memberRow = doc.members.find((m) => m.tokenHash === tokenHash);
       if (!seatRow && !memberRow) {
@@ -969,10 +1102,10 @@ export class VercelRoomService {
       }
       if (memberRow) {
         doc.members = doc.members.filter((m) => m.id !== memberRow.id);
-        return { dirty: true, result: { left: true } };
+        return { dirty: true, result: { ok: true } };
       }
       if (!seatRow) {
-        return { dirty: false, result: { left: true } };
+        return { dirty: false, result: { ok: true } };
       }
       if (!doc.saved) {
         const owned = new Set(controlledSeats(doc, seatRow.seat));
@@ -981,6 +1114,16 @@ export class VercelRoomService {
           (l) => !owned.has(l.seat) && l.controller !== seatRow.seat,
         );
         doc.commands = doc.commands.filter((c) => !owned.has(c.seat));
+        const hasSeatedHuman = doc.seats.some(
+          (s) => s.control === "human" && s.tokenHash !== null,
+        );
+        if (!hasSeatedHuman && doc.members.length > 0) {
+          // Unlock and promote waiting members so they aren't stranded without a leader.
+          doc.locked = false;
+          doc.members = doc.members.map((m) => ({ ...m, approved: true }));
+        }
+        compactLobbySeats(doc);
+        seatWaitingMembers(doc);
         const nextHuman = doc.seats.find(
           (s) => s.control === "human" && s.tokenHash !== null,
         );
@@ -988,16 +1131,14 @@ export class VercelRoomService {
           return {
             dirty: true,
             deleteRoom: true,
-            result: { left: true },
+            result: { ok: true },
           };
         }
         if (doc.hostSeat === seatRow.seat || owned.has(doc.hostSeat)) {
           doc.hostSeat = nextHuman.seat;
         }
-        compactLobbySeats(doc);
-        seatWaitingMembers(doc);
         doc.expiresAt = now + LOBBY_LIFETIME_MS;
-        return { dirty: true, result: { left: true } };
+        return { dirty: true, result: { ok: true } };
       }
       // Mid-game departure promotes remaining online human as host and releases seat to bot takeover.
       const owned = new Set(controlledSeats(doc, seatRow.seat));
@@ -1017,7 +1158,7 @@ export class VercelRoomService {
         );
         if (replacementHost) doc.hostSeat = replacementHost.seat;
       }
-      return { dirty: true, result: { left: true } };
+      return { dirty: true, result: { ok: true } };
     });
   }
 
@@ -1030,186 +1171,189 @@ export class VercelRoomService {
     options: RpcOptions = {},
   ): Promise<RpcResponse | RoomServiceError> {
     const tokenHash = await hashToken(token);
-    return this.mutate<RpcResponse>(roomCode, now, async (doc) => {
-      const seatRow = doc.seats.find((s) => s.tokenHash === tokenHash);
-      const memberRow = doc.members.find((m) => m.tokenHash === tokenHash);
-      if (!seatRow && !memberRow) {
-        return {
-          dirty: false,
-          result: { status: 401, code: "unauthorized" } as RoomServiceError,
-        };
-      }
-
-      let dirty = false;
-      const messages: ServerMessage[] = [];
-
-      // Heartbeat refresh (writes throttled cleanly).
-      if (seatRow) {
-        if (
-          seatRow.lastSeenAt === null ||
-          now - seatRow.lastSeenAt >= HEARTBEAT_WRITE_INTERVAL_MS ||
-          seatRow.takeover === true
-        ) {
-          const owned = new Set(controlledSeats(doc, seatRow.seat));
-          doc.seats = doc.seats.map((entry) =>
-            owned.has(entry.seat)
-              ? {
-                  ...entry,
-                  lastSeenAt: entry.seat === seatRow.seat ? now : null,
-                  takeover: false,
-                }
-              : entry,
-          );
-          dirty = true;
-        }
-        if (
-          !doc.saved &&
-          doc.expiresAt !== null &&
-          doc.expiresAt - now < LOBBY_LIFETIME_MS - 60_000
-        ) {
-          doc.expiresAt = now + LOBBY_LIFETIME_MS;
-          dirty = true;
-        }
-      } else if (memberRow) {
-        if (now - memberRow.lastSeenAt >= HEARTBEAT_WRITE_INTERVAL_MS) {
-          doc.members = doc.members.map((m) =>
-            m.id === memberRow.id ? { ...m, lastSeenAt: now } : m,
-          );
-          dirty = true;
-        }
-      }
-
-      // Seat any newly approved waiting member before evaluating this message.
-      if (seatWaitingMembers(doc)) {
-        dirty = true;
-      }
-
-      const activeSeatRow = doc.seats.find((s) => s.tokenHash === tokenHash);
-      const activeMemberRow = doc.members.find(
-        (m) => m.tokenHash === tokenHash,
-      );
-      if (!activeSeatRow && !activeMemberRow) {
-        return {
-          dirty: false,
-          result: { status: 403, code: "not-admitted" } as RoomServiceError,
-        };
-      }
-      const actor: Actor = activeSeatRow
-        ? { kind: "seat", seat: activeSeatRow.seat }
-        : {
-            kind: "member",
-            memberId: (activeMemberRow as StoredRoomMember).id,
+    let canSkipHeartbeatWrite = false;
+    const outcome = await this.mutate<RpcResponse>(
+      roomCode,
+      now,
+      async (doc) => {
+        const initial = resolveActor(doc, tokenHash);
+        if (!initial) {
+          return {
+            dirty: false,
+            result: { status: 401, code: "unauthorized" } as RoomServiceError,
           };
+        }
 
-      const digestOfState = () => {
-        const lobby = buildLobbyState(doc, now);
-        const lobbyDigest = JSON.stringify(lobby);
-        const youDigest =
-          actor.kind === "seat" ? `s:${actor.seat}` : `m:${actor.memberId}`;
-        const rndDigest = randomnessKey(doc.pendingDice);
-        return { lobby, lobbyDigest, youDigest, rndDigest };
-      };
+        let dirty = false;
+        let statefulWrite = false;
+        const messages: ServerMessage[] = [];
 
-      // Fast paths that never advance game state.
-      if (message.type === "ping") {
-        messages.push({ type: "pong", t: message.t, serverNow: now });
-        const d = digestOfState();
-        return {
-          dirty,
-          result: {
-            messages,
-            lobbyDigest: d.lobbyDigest,
-            youDigest: d.youDigest,
-            randomnessDigest: d.rndDigest,
-          },
-        };
-      }
-      if (message.type === "debug-info") {
-        messages.push({
-          type: "room-diagnostics",
-          value: roomDiagnosticsPayload(doc, now),
-        });
-        const d = digestOfState();
-        return {
-          dirty,
-          result: {
-            messages,
-            lobbyDigest: d.lobbyDigest,
-            youDigest: d.youDigest,
-            randomnessDigest: d.rndDigest,
-          },
-        };
-      }
-
-      // Advance any due timers (dice beacons, bot actions, turn/match timeouts).
-      if (await advanceDueTimers(doc, now, messages)) {
-        dirty = true;
-      }
-
-      if (message.type === "sync") {
-        const d = digestOfState();
-        const youChanged =
-          options.knownYou !== undefined &&
-          options.knownYou !== null &&
-          options.knownYou !== d.youDigest;
-        const returnedToLobby =
-          options.poll === true &&
-          message.lastSeq !== null &&
-          message.lastSeq > 0 &&
-          doc.saved === null;
-        const needsSnapshotReset =
-          options.poll === true &&
-          message.lastSeq !== null &&
-          doc.saved !== null &&
-          (doc.saved.seq - message.lastSeq > MAX_REPLAY_GAP ||
-            message.lastSeq > doc.saved.seq ||
-            (doc.events[0] !== undefined &&
-              message.lastSeq < doc.events[0].seq - 1));
-
-        if (
-          !options.poll ||
-          youChanged ||
-          returnedToLobby ||
-          needsSnapshotReset
-        ) {
-          const welcome = buildWelcomeMessage(
-            doc,
-            actor,
-            returnedToLobby || needsSnapshotReset ? null : message.lastSeq,
-            now,
-          );
-          messages.push(welcome);
+        // Heartbeat refresh (writes throttled cleanly).
+        if (initial.kind === "seat") {
+          const seatRow = initial.row;
           if (
-            welcome.snapshot === null &&
-            message.lastSeq !== null &&
-            doc.saved &&
-            message.lastSeq < doc.saved.seq
+            seatRow.lastSeenAt === null ||
+            now - seatRow.lastSeenAt >= HEARTBEAT_WRITE_INTERVAL_MS ||
+            seatRow.takeover === true
           ) {
-            const replayMsg = buildEventsMessage(doc, message.lastSeq);
-            if (replayMsg) messages.push(replayMsg);
+            const owned = new Set(controlledSeats(doc, seatRow.seat));
+            doc.seats = doc.seats.map((entry) =>
+              owned.has(entry.seat)
+                ? {
+                    ...entry,
+                    lastSeenAt: entry.seat === seatRow.seat ? now : null,
+                    takeover: false,
+                  }
+                : entry,
+            );
+            dirty = true;
+          }
+          if (
+            !doc.saved &&
+            doc.expiresAt !== null &&
+            doc.expiresAt - now < LOBBY_LIFETIME_MS - 60_000
+          ) {
+            doc.expiresAt = now + LOBBY_LIFETIME_MS;
+            dirty = true;
           }
         } else {
-          if (
-            message.lastSeq !== null &&
-            doc.saved &&
-            message.lastSeq < doc.saved.seq
-          ) {
-            const replayMsg = buildEventsMessage(doc, message.lastSeq);
-            if (replayMsg) messages.push(replayMsg);
-          }
-          if (d.rndDigest !== options.knownRandomness) {
-            if (doc.pendingDice) {
-              messages.push({
-                type: "randomness",
-                status: "committed",
-                commitment: doc.pendingDice.commitment,
-              });
-            }
-          }
-          if (d.lobbyDigest !== options.knownLobby) {
-            messages.push({ type: "lobby", lobby: d.lobby });
+          const memberRow = initial.row;
+          if (now - memberRow.lastSeenAt >= HEARTBEAT_WRITE_INTERVAL_MS) {
+            doc.members = doc.members.map((m) =>
+              m.id === memberRow.id ? { ...m, lastSeenAt: now } : m,
+            );
+            dirty = true;
           }
         }
+
+        // Seat any newly approved waiting member before evaluating this message.
+        if (seatWaitingMembers(doc)) {
+          dirty = true;
+          statefulWrite = true;
+        }
+
+        const resolved = resolveActor(doc, tokenHash);
+        if (!resolved) {
+          return {
+            dirty: false,
+            result: { status: 403, code: "not-admitted" } as RoomServiceError,
+          };
+        }
+        const actor: Actor =
+          resolved.kind === "seat"
+            ? { kind: "seat", seat: resolved.seat }
+            : { kind: "member", memberId: resolved.memberId };
+
+        // Fast paths that never advance game state.
+        if (message.type === "ping") {
+          messages.push({ type: "pong", t: message.t, serverNow: now });
+          const d = digestOfDoc(doc, actor, now);
+          canSkipHeartbeatWrite = !statefulWrite;
+          return {
+            dirty,
+            result: {
+              messages,
+              lobbyDigest: d.lobbyDigest,
+              youDigest: d.youDigest,
+              randomnessDigest: d.rndDigest,
+            },
+          };
+        }
+        if (message.type === "debug-info") {
+          messages.push({
+            type: "room-diagnostics",
+            value: roomDiagnosticsPayload(doc, now),
+          });
+          const d = digestOfDoc(doc, actor, now);
+          canSkipHeartbeatWrite = !statefulWrite;
+          return {
+            dirty,
+            result: {
+              messages,
+              lobbyDigest: d.lobbyDigest,
+              youDigest: d.youDigest,
+              randomnessDigest: d.rndDigest,
+            },
+          };
+        }
+
+        // Advance any due timers (dice beacons, bot actions, turn/match timeouts).
+        if (await advanceDueTimers(doc, now, messages)) {
+          dirty = true;
+          statefulWrite = true;
+        }
+
+        if (message.type === "sync") {
+          canSkipHeartbeatWrite = !statefulWrite && options.poll === true;
+          return {
+            dirty,
+            result: buildSyncRpcResponse(
+              doc,
+              actor,
+              message.lastSeq,
+              now,
+              options,
+              messages,
+            ),
+          };
+        }
+
+        const seqBeforeCommand = doc.saved?.seq ?? 0;
+
+        if (message.type === "lobby") {
+          const opResult = await this.applyLobbyOp(
+            doc,
+            actor,
+            message,
+            now,
+            messages,
+          );
+          if (opResult.changed) {
+            dirty = true;
+            statefulWrite = true;
+          }
+        } else {
+          const intentResult = await this.applyIntentOp(
+            doc,
+            actor,
+            message,
+            now,
+            messages,
+          );
+          if (intentResult.changed) {
+            dirty = true;
+            statefulWrite = true;
+          }
+        }
+
+        // Immediately resolve due timers created by this command (e.g. secure dice, quick bot first roll).
+        if (await advanceDueTimers(doc, now, messages)) {
+          dirty = true;
+          statefulWrite = true;
+        }
+
+        canSkipHeartbeatWrite = false;
+
+        // Push incremental updates back in the same RPC response.
+        const baseSeq =
+          clientLastSeq !== null && clientLastSeq <= seqBeforeCommand
+            ? clientLastSeq
+            : seqBeforeCommand;
+        if (doc.saved) {
+          if (
+            baseSeq < doc.saved.seq &&
+            doc.saved.seq - baseSeq <= MAX_REPLAY_GAP
+          ) {
+            const delta = buildEventsMessage(doc, baseSeq);
+            if (delta) messages.push(delta);
+          } else if (baseSeq < doc.saved.seq) {
+            messages.push(buildWelcomeMessage(doc, actor, null, now));
+          }
+        } else if (seqBeforeCommand > 0 && doc.saved === null) {
+          messages.push(buildWelcomeMessage(doc, actor, null, now));
+        }
+        const d = digestOfDoc(doc, actor, now);
+        messages.push({ type: "lobby", lobby: d.lobby });
 
         return {
           dirty,
@@ -1220,66 +1364,34 @@ export class VercelRoomService {
             randomnessDigest: d.rndDigest,
           },
         };
-      }
+      },
+    );
 
-      const seqBeforeCommand = doc.saved?.seq ?? 0;
+    if (
+      "status" in outcome &&
+      outcome.status === 409 &&
+      canSkipHeartbeatWrite &&
+      message.type === "sync"
+    ) {
+      const latest = await this.loadValid(roomCode, now);
+      if (!latest) return { status: 404, code: "room-not-found" };
+      const resolved = resolveActor(latest.data, tokenHash);
+      if (!resolved) return { status: 401, code: "unauthorized" };
+      const actor: Actor =
+        resolved.kind === "seat"
+          ? { kind: "seat", seat: resolved.seat }
+          : { kind: "member", memberId: resolved.memberId };
+      return buildSyncRpcResponse(
+        latest.data,
+        actor,
+        message.lastSeq,
+        now,
+        options,
+        [],
+      );
+    }
 
-      if (message.type === "lobby") {
-        const opResult = await this.applyLobbyOp(
-          doc,
-          actor,
-          message,
-          now,
-          messages,
-        );
-        if (opResult.changed) dirty = true;
-      } else {
-        const intentResult = await this.applyIntentOp(
-          doc,
-          actor,
-          message,
-          now,
-          messages,
-        );
-        if (intentResult.changed) dirty = true;
-      }
-
-      // Immediately resolve due timers created by this command (e.g. secure dice, quick bot first roll).
-      if (await advanceDueTimers(doc, now, messages)) {
-        dirty = true;
-      }
-
-      // Push incremental updates back in the same RPC response.
-      const baseSeq =
-        clientLastSeq !== null && clientLastSeq <= seqBeforeCommand
-          ? clientLastSeq
-          : seqBeforeCommand;
-      if (doc.saved) {
-        if (
-          baseSeq < doc.saved.seq &&
-          doc.saved.seq - baseSeq <= MAX_REPLAY_GAP
-        ) {
-          const delta = buildEventsMessage(doc, baseSeq);
-          if (delta) messages.push(delta);
-        } else if (baseSeq < doc.saved.seq) {
-          messages.push(buildWelcomeMessage(doc, actor, null, now));
-        }
-      } else if (seqBeforeCommand > 0 && doc.saved === null) {
-        messages.push(buildWelcomeMessage(doc, actor, null, now));
-      }
-      const d = digestOfState();
-      messages.push({ type: "lobby", lobby: d.lobby });
-
-      return {
-        dirty,
-        result: {
-          messages,
-          lobbyDigest: d.lobbyDigest,
-          youDigest: d.youDigest,
-          randomnessDigest: d.rndDigest,
-        },
-      };
-    });
+    return outcome;
   }
 
   private async applyLobbyOp(
