@@ -1,5 +1,43 @@
 /* Who is in the room: seat choices, the waiting room and the leader's tools.
    Seat cards themselves keep their base look in App.css. */
+.seat-add-bot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+.seat-add-bot .seat-plus {
+  margin-bottom: 0;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--player-color) 45%, #6fb2c2);
+  transition:
+    background 150ms,
+    transform 150ms;
+}
+.seat-add-bot:hover:not(:is(:disabled, [aria-disabled="true"])) .seat-plus {
+  background: #fff;
+  transform: translateY(-2px);
+}
+.seat-add-bot:focus-visible {
+  outline: 3px solid #236cce;
+  outline-offset: 2px;
+}
+.seat-add-bot:is(:disabled, [aria-disabled="true"]) {
+  opacity: 0.55;
+  cursor: default;
+}
+.seat-add-bot-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+}
 .seat-choices {
   display: flex;
   flex-wrap: wrap;

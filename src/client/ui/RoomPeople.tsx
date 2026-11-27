@@ -262,26 +262,32 @@ export function LobbySeats({
               <li key={seat} className="lobby-seat empty" style={style}>
                 <div className="seat-open">
                   {you === null ? (
-                    <span className="seat-plus seat-color" aria-hidden="true" />
+                    <>
+                      <span
+                        className="seat-plus seat-color"
+                        aria-hidden="true"
+                      />
+                      <strong>{t("Place libre", "Open seat")}</strong>
+                      <span>
+                        {t("En attente d’un joueur", "Waiting for a player")}
+                      </span>
+                    </>
                   ) : (
-                    <span className="seat-plus" aria-hidden="true">
-                      +
-                    </span>
-                  )}
-                  <strong>{t("Place libre", "Open seat")}</strong>
-                  {you === null ? (
-                    <span>
-                      {t("En attente d’un joueur", "Waiting for a player")}
-                    </span>
-                  ) : (
-                    <div className="seat-choices">
-                      {leader && (
+                    <>
+                      {leader ? (
                         <ActionButton
                           type="button"
-                          className="seat-choice"
+                          className="seat-add-bot"
                           disabled={disabled || seat !== firstOpen}
                           disabledReason={
-                            seat !== firstOpen ? orderReason : undefined
+                            disabled
+                              ? t(
+                                  "En attente de la connexion au serveur.",
+                                  "Waiting for the server connection.",
+                                )
+                              : seat !== firstOpen
+                                ? orderReason
+                                : undefined
                           }
                           aria-label={t(
                             `Ajouter un bot à la place ${seat + 1}`,
@@ -290,31 +296,46 @@ export function LobbySeats({
                           )}
                           onClick={() => onAddBot(seat)}
                         >
-                          <Icon name="bot" size={16} />
-                          Bot
+                          <span className="seat-plus" aria-hidden="true">
+                            +
+                          </span>
+                          <span className="seat-add-bot-label">
+                            <Icon name="bot" size={15} />
+                            {t("Ajouter un bot", "Add bot", "Thêm bot")}
+                          </span>
                         </ActionButton>
+                      ) : (
+                        <>
+                          <span
+                            className="seat-plus seat-color"
+                            aria-hidden="true"
+                          />
+                          <strong>{t("Place libre", "Open seat")}</strong>
+                        </>
                       )}
-                      <ActionButton
-                        type="button"
-                        className="seat-choice"
-                        disabled={disabled || seat !== firstOpen}
-                        disabledReason={
-                          seat !== firstOpen ? orderReason : undefined
-                        }
-                        aria-label={t(
-                          `Ajouter un joueur sur ce PC à la place ${seat + 1}`,
-                          `Add a player on this PC to seat ${seat + 1}`,
-                          `Thêm người chơi chung máy vào chỗ ${seat + 1}`,
-                        )}
-                        onClick={() => {
-                          setLocalName("");
-                          setNaming(seat);
-                        }}
-                      >
-                        <Icon name="screen" size={16} />
-                        {t("Sur ce PC", "On this PC")}
-                      </ActionButton>
-                    </div>
+                      <div className="seat-choices">
+                        <ActionButton
+                          type="button"
+                          className="seat-choice"
+                          disabled={disabled || seat !== firstOpen}
+                          disabledReason={
+                            seat !== firstOpen ? orderReason : undefined
+                          }
+                          aria-label={t(
+                            `Ajouter un joueur sur ce PC à la place ${seat + 1}`,
+                            `Add a player on this PC to seat ${seat + 1}`,
+                            `Thêm người chơi chung máy vào chỗ ${seat + 1}`,
+                          )}
+                          onClick={() => {
+                            setLocalName("");
+                            setNaming(seat);
+                          }}
+                        >
+                          <Icon name="screen" size={16} />
+                          {t("Sur ce PC", "On this PC")}
+                        </ActionButton>
+                      </div>
+                    </>
                   )}
                 </div>
               </li>

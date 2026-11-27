@@ -2111,7 +2111,7 @@ function App() {
   }, [serverConfigKey]);
   const settingsDirty =
     serverConfigKey !== null && JSON.stringify(config) !== serverConfigKey;
-  // Play opens a lobby with four bots; a code joins a friend's room instead.
+  // Play opens a lobby without pre-filled bots; a code joins a friend's room instead.
   async function enter(join = false) {
     if (entering.current) return;
     const cleanName = name.trim();
@@ -2143,7 +2143,7 @@ function App() {
         cleanName,
         join ? config : { ...config, randomnessMode: "secure" },
         join ? code : undefined,
-        join ? 0 : 4,
+        0,
         isDefaultCosmetics(ownCosmetics) ? undefined : ownCosmetics,
       );
       try {
@@ -2478,8 +2478,8 @@ function App() {
             <h1>{t("Joueurs", "Players")}</h1>
             <p className="welcome-intro">
               {t(
-                "De 2 à 5 joueurs. Vos amis prennent la place d’un bot en entrant ce code ; un joueur assis à côté de vous peut jouer sur ce PC.",
-                "2 to 5 players. Friends take a bot’s seat by entering this code; someone next to you can play on this PC.",
+                "De 2 à 5 joueurs. Vos amis vous rejoignent avec ce code ; ajoutez des bots avec + ou invitez un joueur sur ce PC.",
+                "2 to 5 players. Friends join with this code; add bots with + or seat someone on this PC.",
               )}
             </p>
             <div className="room-code-block">

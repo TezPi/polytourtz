@@ -122,8 +122,8 @@ export const VI_TRANSLATIONS: Readonly<Record<string, string>> = {
   Join: "Vào phòng",
   "Quick settings": "Thiết lập nhanh",
   "Game room": "Phòng chờ",
-  "2 to 5 players. Friends take a bot’s seat by entering this code; someone next to you can play on this PC.":
-    "Từ 2 đến 5 người chơi. Bạn bè nhập mã này để thế chỗ bot; người ngồi cạnh cũng có thể chơi chung trên máy này.",
+  "2 to 5 players. Friends join with this code; add bots with + or seat someone on this PC.":
+    "Từ 2 đến 5 người chơi. Bạn bè nhập mã này để tham gia; bấm + để thêm bot hoặc chơi chung trên máy này.",
   "Link copied": "Đã sao chép liên kết",
   "At least 2 players are needed: add a bot or invite a friend.":
     "Cần ít nhất 2 người chơi: hãy thêm bot hoặc mời bạn bè.",
