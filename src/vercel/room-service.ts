@@ -813,6 +813,11 @@ export class VercelRoomService {
           error instanceof RoomConflictError &&
           attempt + 1 < MAX_CAS_RETRIES
         ) {
+          // Brief progressive delay lets Blob eventual-consistency settle
+          // when the in-memory write-through cache was cold (cross-instance).
+          await new Promise((resolve) =>
+            setTimeout(resolve, 25 * (attempt + 1)),
+          );
           continue;
         }
         return { status: 409, code: "concurrent-update" };

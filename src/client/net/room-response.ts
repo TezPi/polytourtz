@@ -31,6 +31,10 @@ const ERROR_MESSAGES: Record<string, readonly [string, string]> = {
     "Cette salle est complète. Créez une nouvelle partie.",
     "This room is full. Create a new game.",
   ],
+  "concurrent-update": [
+    "Un conflit temporaire est survenu. Réessayez dans un instant.",
+    "A temporary conflict occurred. Please try again shortly.",
+  ],
   "game-started": [
     "La partie a déjà commencé. Rejoignez un autre salon.",
     "This game has already started. Join another room.",

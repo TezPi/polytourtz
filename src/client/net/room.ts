@@ -64,26 +64,37 @@ export async function enterRoom(
   bots = 0,
   cosmetics?: PlayerCosmetics,
 ): Promise<RoomCredentials> {
-  let response: Response;
-  try {
-    response = await fetch(code ? `/api/rooms/${code}/join` : "/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        code
-          ? { name, ...(cosmetics ? { cosmetics } : {}) }
-          : { name, config, bots, ...(cosmetics ? { cosmetics } : {}) },
-      ),
-    });
-  } catch {
-    throw new Error(
-      translate(
-        "Impossible de joindre le serveur de jeu. Vérifiez votre connexion puis réessayez.",
-        "Unable to reach the game server. Check your connection and try again.",
-      ),
-    );
+  const url = code ? `/api/rooms/${code}/join` : "/api/rooms";
+  const payload = JSON.stringify(
+    code
+      ? { name, ...(cosmetics ? { cosmetics } : {}) }
+      : { name, config, bots, ...(cosmetics ? { cosmetics } : {}) },
+  );
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+      });
+    } catch {
+      throw new Error(
+        translate(
+          "Impossible de joindre le serveur de jeu. Vérifiez votre connexion puis réessayez.",
+          "Unable to reach the game server. Check your connection and try again.",
+        ),
+      );
+    }
+    // Retry transient Blob CAS conflicts (HTTP 409 concurrent-update) that
+    // the Vercel backend can emit when reads lag behind writes.
+    if (response.status === 409 && attempt + 1 < 3) {
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      continue;
+    }
+    break;
   }
-  const body = await parseRoomResponse(response);
+  const body = await parseRoomResponse(response!);
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(body));
   return body;
 }
