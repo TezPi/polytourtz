@@ -3,6 +3,7 @@ import {
   BlobPreconditionFailedError,
   del,
   get,
+  head,
   put,
 } from "@vercel/blob";
 import { RoomConflictError, type RoomStore } from "./store.js";
@@ -31,85 +32,90 @@ type CachedEntry = {
 };
 
 /**
- * Private Vercel Blob room persistence with ETag CAS and revision-checked
- * conditional reads.
+ * Private Vercel Blob room persistence using transactional `head()` ETags.
  *
- * Uses `ifNoneMatch` on `get()` so every read validates against Blob origin
- * while skipping body transfer when unchanged (`304`). Comparing monotonic
- * `rev` + `createdAt` prevents same-instance stale-read regressions right
- * after `create()` / `replace()`, and tracking rejected ETags avoids wasting
- * CAS writes while `get()` catches up after a cross-instance conflict.
+ * `put(..., { ifMatch })` validates against the Blob API metadata store, whose
+ * authoritative ETag is returned by `head()` and `put()`. Under concurrent
+ * writes, `get(..., { useCache: false })` on the content delivery endpoint can
+ * return a lagged or mismatched `response.headers.etag`, causing persistent 412
+ * conflicts. Validating the cache and conditional writes against `head().etag`
+ * eliminates both stale reads and ETag mismatches.
  */
 export function createBlobRoomStore(): RoomStore {
   const cache = new Map<string, CachedEntry>();
-  const staleEtags = new Map<string, string>();
-
-  async function fetchFresh(roomCode: string, ifNoneMatch?: string) {
-    return get(roomBlobPath(roomCode), {
-      access: "private",
-      useCache: false,
-      ...(ifNoneMatch ? { ifNoneMatch } : {}),
-    });
-  }
 
   return {
     async load(roomCode) {
       const key = roomCode.toUpperCase();
+      const path = roomBlobPath(roomCode);
       const cached = cache.get(key);
-      const staleEtag = staleEtags.get(key);
+
+      let meta: Awaited<ReturnType<typeof head>>;
       try {
-        let result = await fetchFresh(
-          roomCode,
-          !staleEtag && cached?.etag ? cached.etag : undefined,
-        );
-        if (result?.statusCode === 304 && cached) {
-          return {
-            data: JSON.parse(cached.raw) as VercelRoomDoc,
-            etag: cached.etag,
-          };
-        }
-        if (result?.statusCode !== 200) {
+        meta = await head(path);
+      } catch (error) {
+        if (error instanceof BlobNotFoundError) {
           cache.delete(key);
           return null;
         }
-        let text = await new Response(result.stream).text();
-        let etag = result.blob.etag;
-        if (staleEtag && etag === staleEtag) {
-          // Origin already rejected this ETag; wait briefly once for Blob read
-          // propagation rather than immediately colliding with the same ETag.
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          const retried = await fetchFresh(roomCode);
-          if (retried?.statusCode === 200) {
-            result = retried;
-            text = await new Response(retried.stream).text();
-            etag = retried.blob.etag;
-          } else if (!retried) {
-            cache.delete(key);
-            return null;
+        throw error;
+      }
+
+      if (cached && meta.etag && cached.etag === meta.etag) {
+        return {
+          data: JSON.parse(cached.raw) as VercelRoomDoc,
+          etag: cached.etag,
+        };
+      }
+
+      try {
+        let text: string | null = null;
+        let fetchedEtag = "";
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const result = await get(path, {
+            access: "private",
+            useCache: false,
+          });
+          if (result?.statusCode === 200) {
+            text = await new Response(result.stream).text();
+            fetchedEtag = result.blob.etag;
+            if (!meta.etag || fetchedEtag === meta.etag) break;
+          }
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 80 * (attempt + 1)),
+            );
           }
         }
+        if (text === null) {
+          cache.delete(key);
+          return null;
+        }
+
         const remote = JSON.parse(text) as VercelRoomDoc;
         const remoteRev = remote.rev ?? 0;
         if (
           cached &&
           remote.createdAt === cached.createdAt &&
-          remoteRev < cached.rev
+          remoteRev < cached.rev &&
+          fetchedEtag !== meta.etag
         ) {
           return {
             data: JSON.parse(cached.raw) as VercelRoomDoc,
-            etag: cached.etag,
+            etag: meta.etag || cached.etag,
           };
         }
-        if (staleEtag && etag !== staleEtag) {
-          staleEtags.delete(key);
-        }
-        if (!staleEtag || etag !== staleEtag) {
+
+        const etag = meta.etag || fetchedEtag;
+        if (etag && (!meta.etag || fetchedEtag === meta.etag)) {
           cache.set(key, {
             raw: text,
             etag,
             rev: remoteRev,
             createdAt: remote.createdAt,
           });
+        } else {
+          cache.delete(key);
         }
         return { data: remote, etag };
       } catch (error) {
@@ -129,7 +135,6 @@ export function createBlobRoomStore(): RoomStore {
           allowOverwrite: false,
           contentType: "application/json",
         });
-        staleEtags.delete(key);
         cache.set(key, {
           raw,
           etag: blob.etag,
@@ -154,7 +159,6 @@ export function createBlobRoomStore(): RoomStore {
           ifMatch: expectedEtag,
           contentType: "application/json",
         });
-        staleEtags.delete(key);
         cache.set(key, {
           raw,
           etag: blob.etag,
@@ -165,16 +169,13 @@ export function createBlobRoomStore(): RoomStore {
       } catch (error) {
         if (isConflictError(error)) {
           cache.delete(key);
-          staleEtags.set(key, expectedEtag);
           throw new RoomConflictError("ETag mismatch");
         }
         throw error;
       }
     },
     async remove(roomCode) {
-      const key = roomCode.toUpperCase();
-      cache.delete(key);
-      staleEtags.delete(key);
+      cache.delete(roomCode.toUpperCase());
       try {
         await del(roomBlobPath(roomCode));
       } catch (error) {

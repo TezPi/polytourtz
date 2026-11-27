@@ -906,6 +906,7 @@ export class VercelRoomService {
     now: number,
     fn: (doc: MutableDoc) => Promise<{
       readonly dirty: boolean;
+      readonly bestEffortWrite?: boolean;
       readonly deleteRoom?: boolean;
       readonly result: T | RoomServiceError;
     }>,
@@ -927,7 +928,8 @@ export class VercelRoomService {
         return outcome.result;
       } catch (error) {
         if (error instanceof RoomConflictError) {
-          if (attempt + 1 < MAX_CAS_RETRIES) {
+          const maxAttempts = outcome.bestEffortWrite ? 2 : MAX_CAS_RETRIES;
+          if (attempt + 1 < maxAttempts) {
             const base = Math.min(40 * 1.45 ** attempt, 450);
             const jitter = Math.floor(Math.random() * 60);
             await new Promise((resolve) => setTimeout(resolve, base + jitter));
@@ -1287,6 +1289,7 @@ export class VercelRoomService {
           canSkipHeartbeatWrite = !statefulWrite && options.poll === true;
           return {
             dirty,
+            bestEffortWrite: canSkipHeartbeatWrite,
             result: buildSyncRpcResponse(
               doc,
               actor,

@@ -424,7 +424,7 @@ describe("Vercel HTTP RPC room backend", () => {
           poll: true,
         }),
       });
-      expect(replaceCalls).toBe(10);
+      expect(replaceCalls).toBe(2);
       expect(poll.status).toBe(200);
       expect(poll.body.lobbyDigest.length).toBeGreaterThan(0);
     } finally {
