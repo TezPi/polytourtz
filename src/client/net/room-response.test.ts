@@ -70,6 +70,14 @@ describe("room HTTP response boundary", () => {
     ).rejects.toThrow("serveur de jeu est temporairement indisponible");
   });
 
+  it("explains a suspended room storage instead of a generic outage", async () => {
+    await expect(
+      parseRoomResponse(
+        Response.json({ error: "room-storage-suspended" }, { status: 503 }),
+      ),
+    ).rejects.toThrow("stockage des salles est suspendu");
+  });
+
   it("accepts only valid seat credentials on success", async () => {
     const credentials = {
       roomCode: "ABCD23",

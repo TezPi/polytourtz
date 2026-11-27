@@ -52,6 +52,11 @@ const ERROR_MESSAGES: Record<string, readonly [string, string, string?]> = {
     "Le serveur de jeu est temporairement indisponible (HTTP 503). Patientez un instant puis réessayez.",
     "The game server is temporarily unavailable (HTTP 503). Wait a moment and try again.",
   ],
+  "room-storage-suspended": [
+    "Le stockage des salles est suspendu (HTTP 503). L’hébergeur doit le réactiver.",
+    "Room storage is suspended (HTTP 503). The host needs to reactivate it.",
+    "Kho lưu phòng đang bị tạm ngưng (HTTP 503). Chủ trang cần kích hoạt lại.",
+  ],
   "room-storage-limit": [
     "Le quota quotidien d’écriture des salles Cloudflare est atteint (HTTP 503). Réessayez après sa réinitialisation.",
     "The daily Cloudflare room write quota has been reached (HTTP 503). Try again after it resets.",

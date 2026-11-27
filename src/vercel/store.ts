@@ -12,6 +12,15 @@ export class RoomConflictError extends Error {
   }
 }
 
+/** Vercel Blob rejects every call once the store is suspended (quota or billing). */
+export function isStoreSuspended(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "BlobStoreSuspendedError" ||
+      error.message.includes("store has been suspended"))
+  );
+}
+
 export interface RoomStore {
   load(roomCode: string): Promise<StoredEntry<VercelRoomDoc> | null>;
   create(

@@ -34,6 +34,24 @@ async function apiJson<T>(
 }
 
 describe("Vercel HTTP RPC room backend", () => {
+  it("reports a suspended Blob store as its own 503 code", async () => {
+    const suspended = new Error("Vercel Blob: This store has been suspended.");
+    suspended.name = "BlobStoreSuspendedError";
+    const store: RoomStore = {
+      ...createMemoryRoomStore(),
+      create: async () => {
+        throw suspended;
+      },
+    };
+    const response = await apiJson<{ error: string }>(
+      createVercelApp(store),
+      "/api/rooms",
+      { method: "POST", body: JSON.stringify({ name: "Probe" }) },
+    );
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe("room-storage-suspended");
+  });
+
   it("reports HTTP transport on /api/health and app version on /api/version", async () => {
     const app = createVercelApp(createMemoryRoomStore());
     const health = await apiJson<{ status: string; transport: string }>(

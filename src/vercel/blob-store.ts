@@ -24,6 +24,13 @@ function isConflictError(error: unknown): boolean {
   );
 }
 
+/** Blob failures are mapped to a bare 503 upstream; log the real cause first. */
+function logBlobError(op: string, error: unknown): void {
+  console.error(
+    `[blob-store] ${op} failed: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
+  );
+}
+
 type CachedEntry = {
   readonly raw: string;
   readonly etag: string;
@@ -58,6 +65,7 @@ export function createBlobRoomStore(): RoomStore {
           cache.delete(key);
           return null;
         }
+        logBlobError("head", error);
         throw error;
       }
 
@@ -123,6 +131,7 @@ export function createBlobRoomStore(): RoomStore {
           cache.delete(key);
           return null;
         }
+        logBlobError("get", error);
         throw error;
       }
     },
@@ -146,6 +155,7 @@ export function createBlobRoomStore(): RoomStore {
         if (isConflictError(error)) {
           throw new RoomConflictError("Room already exists");
         }
+        logBlobError("put(create)", error);
         throw error;
       }
     },
@@ -171,6 +181,7 @@ export function createBlobRoomStore(): RoomStore {
           cache.delete(key);
           throw new RoomConflictError("ETag mismatch");
         }
+        logBlobError("put(replace)", error);
         throw error;
       }
     },

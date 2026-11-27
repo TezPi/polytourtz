@@ -38,6 +38,7 @@ import { createEngineContext } from "../worker/chance-randomness.js";
 import { prepareDice, resolveDice } from "../worker/randomness.js";
 import { renameChanceCardsInEvent } from "../worker/state-migrations.js";
 import {
+  isStoreSuspended,
   RoomConflictError,
   type RoomStore,
   type StoredEntry,
@@ -938,6 +939,9 @@ export class VercelRoomService {
           }
           return { status: 409, code: "concurrent-update" };
         }
+        if (isStoreSuspended(error)) {
+          return { status: 503, code: "room-storage-suspended" };
+        }
         transientErrors += 1;
         if (transientErrors <= 2 && attempt + 1 < MAX_CAS_RETRIES) {
           await new Promise((resolve) =>
@@ -1015,6 +1019,9 @@ export class VercelRoomService {
         return { roomCode, seat: 0, token };
       } catch (error) {
         if (error instanceof RoomConflictError) continue;
+        if (isStoreSuspended(error)) {
+          return { status: 503, code: "room-storage-suspended" };
+        }
         return { status: 503, code: "room-service-unavailable" };
       }
     }
