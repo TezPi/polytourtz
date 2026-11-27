@@ -2,7 +2,11 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { type BoardRule, getBoard } from "../../shared/board/index.js";
+import {
+  type BoardSelector,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
 import {
   getProperty,
   type PublicState,
@@ -10,7 +14,13 @@ import {
 } from "../../shared/engine/index.js";
 import { useLocale } from "../i18n.js";
 import { PLAYER_COLORS, tileName } from "../ui/board-display.js";
-import { LOT_TOP, tileCenter, tilePoint, type Vec3 } from "./board-layout.js";
+import {
+  LOT_TOP,
+  LOTS_PER_SIDE,
+  tileCenter,
+  tilePoint,
+  type Vec3,
+} from "./board-layout.js";
 import { canvasTexture, labelTexture, mix } from "./board-textures.js";
 
 // Small original landmarks on the island, championship and world-tour corners;
@@ -82,17 +92,28 @@ function at(
   x: number,
   z: number,
   y = LOT_TOP,
+  lotsPerSide = LOTS_PER_SIDE,
 ): [number, number, number] {
-  const [worldX, worldZ] = tilePoint(corner, x, z);
+  const [worldX, worldZ] = tilePoint(corner, x, z, lotsPerSide);
   return [worldX, y, worldZ];
 }
 
-function Island() {
+function Island({ lotsPerSide = LOTS_PER_SIDE }: { lotsPerSide?: number }) {
+  const islandCorner = lotsPerSide + 1;
   return (
     <group>
-      <Palm position={at(8, -0.45, -0.4)} scale={0.95} />
-      <Palm position={at(8, -0.12, -0.55)} scale={0.72} />
-      <BeachUmbrella position={at(8, -0.55, -0.02)} scale={0.9} />
+      <Palm
+        position={at(islandCorner, -0.45, -0.4, LOT_TOP, lotsPerSide)}
+        scale={0.95}
+      />
+      <Palm
+        position={at(islandCorner, -0.12, -0.55, LOT_TOP, lotsPerSide)}
+        scale={0.72}
+      />
+      <BeachUmbrella
+        position={at(islandCorner, -0.55, -0.02, LOT_TOP, lotsPerSide)}
+        scale={0.9}
+      />
     </group>
   );
 }
@@ -311,7 +332,9 @@ const STADIUM = {
   flagPole: 0.075,
 } as const;
 
-const STADIUM_ANCHOR = at(STADIUM.corner, STADIUM.x, STADIUM.z);
+function stadiumAnchor(lotsPerSide = LOTS_PER_SIDE) {
+  return at((lotsPerSide + 1) * 2, STADIUM.x, STADIUM.z, LOT_TOP, lotsPerSide);
+}
 
 /** Underside of the tilted canopy above a round-space point (before squash). */
 function roofUnderside(z: number) {
@@ -733,13 +756,16 @@ function Stadium({
   animated,
   lowGraphics,
   glaze,
+  lotsPerSide = LOTS_PER_SIDE,
 }: {
   hosted: boolean;
   hostSeat: Seat | null;
   animated: boolean;
   lowGraphics: boolean;
   glaze: THREE.Texture;
+  lotsPerSide?: number;
 }) {
+  const anchor = stadiumAnchor(lotsPerSide);
   const body = useDisposable(stadiumBody);
   const glass = useDisposable(stadiumGlass);
   const accents = useDisposable(stadiumAccents);
@@ -799,7 +825,7 @@ function Stadium({
   });
 
   return (
-    <group position={STADIUM_ANCHOR} rotation={[0, SCREEN_YAW, 0]}>
+    <group position={anchor} rotation={[0, SCREEN_YAW, 0]}>
       <mesh geometry={body} castShadow receiveShadow>
         <meshStandardMaterial
           vertexColors
@@ -895,7 +921,9 @@ const AIRPORT = {
   windsock: { x: 0.66, z: -0.2, height: 0.22 },
 } as const;
 
-const AIRPORT_ANCHOR = at(AIRPORT.corner, 0, 0);
+function airportAnchor(lotsPerSide = LOTS_PER_SIDE) {
+  return at((lotsPerSide + 1) * 3, 0, 0, LOT_TOP, lotsPerSide);
+}
 
 function airportBody() {
   const { terminal, tower, windsock } = AIRPORT;
@@ -1224,10 +1252,13 @@ const PUFFS_PER_ENGINE = 4;
 function Airport({
   animated,
   glaze,
+  lotsPerSide = LOTS_PER_SIDE,
 }: {
   animated: boolean;
   glaze: THREE.Texture;
+  lotsPerSide?: number;
 }) {
+  const anchor = airportAnchor(lotsPerSide);
   const body = useDisposable(airportBody);
   const glass = useDisposable(airportGlass);
   const jet = useDisposable(planeGeometry);
@@ -1278,7 +1309,7 @@ function Airport({
   });
 
   return (
-    <group position={AIRPORT_ANCHOR} rotation={[0, SCREEN_YAW, 0]}>
+    <group position={anchor} rotation={[0, SCREEN_YAW, 0]}>
       <mesh geometry={body} castShadow receiveShadow>
         <meshStandardMaterial vertexColors roughness={0.7} />
       </mesh>
@@ -1339,52 +1370,62 @@ function Airport({
  * World points the landmarks reach up to, so the camera framing keeps the
  * stadium's lamps and flags and the control tower inside the free band.
  */
-export const LANDMARK_PEAKS: readonly Vec3[] = [
-  landmarkPoint(
-    STADIUM_ANCHOR,
-    0,
-    STADIUM.trophy.y + STADIUM.trophy.height * STADIUM.trophy.scale,
-    0,
-  ),
-  ...floodlightHeads().map(({ position }) =>
-    landmarkPoint(STADIUM_ANCHOR, position.x, position.y + 0.05, position.z),
-  ),
-  ...flagTops().map((top) =>
-    landmarkPoint(STADIUM_ANCHOR, top.x, top.y, top.z),
-  ),
-  landmarkPoint(
-    STADIUM_ANCHOR,
-    0,
-    roofUnderside(-STADIUM.roof.outer) + STADIUM.roof.depth + 0.02,
-    -STADIUM.roof.outer * Math.cos(STADIUM.roof.tilt) * STADIUM.squash,
-  ),
-  landmarkPoint(
-    AIRPORT_ANCHOR,
-    AIRPORT.tower.x,
-    AIRPORT.tower.top + 0.02,
-    AIRPORT.tower.z,
-  ),
-];
+export function landmarkPeaks(lotsPerSide = LOTS_PER_SIDE): readonly Vec3[] {
+  const stadium = stadiumAnchor(lotsPerSide);
+  const airport = airportAnchor(lotsPerSide);
+  return [
+    landmarkPoint(
+      stadium,
+      0,
+      STADIUM.trophy.y + STADIUM.trophy.height * STADIUM.trophy.scale,
+      0,
+    ),
+    ...floodlightHeads().map(({ position }) =>
+      landmarkPoint(stadium, position.x, position.y + 0.05, position.z),
+    ),
+    ...flagTops().map((top) => landmarkPoint(stadium, top.x, top.y, top.z)),
+    landmarkPoint(
+      stadium,
+      0,
+      roofUnderside(-STADIUM.roof.outer) + STADIUM.roof.depth + 0.02,
+      -STADIUM.roof.outer * Math.cos(STADIUM.roof.tilt) * STADIUM.squash,
+    ),
+    landmarkPoint(
+      airport,
+      AIRPORT.tower.x,
+      AIRPORT.tower.top + 0.02,
+      AIRPORT.tower.z,
+    ),
+  ];
+}
 
-// Screen-down offset (toward the camera) of each corner's printed name.
-const LABEL_DROP: Record<number, number> = { 8: 0.42, 16: 0.28, 24: 0.42 };
+export const LANDMARK_PEAKS: readonly Vec3[] = landmarkPeaks();
+
+function cornerLabelDrop(corner: number, lotsPerSide: number): number {
+  const stride = lotsPerSide + 1;
+  if (corner === stride * 2) return 0.28;
+  if (corner === stride || corner === stride * 3) return 0.42;
+  return 0;
+}
 
 function CornerLabel({
   corner,
-  boardRule,
+  boardSelector,
+  lotsPerSide,
 }: {
   corner: number;
-  boardRule: BoardRule;
+  boardSelector: BoardSelector;
+  lotsPerSide: number;
 }) {
   const { locale } = useLocale();
   const texture = useMemo(
     () =>
-      labelTexture(tileName(corner, { boardRule }).toLocaleUpperCase(locale)),
-    [corner, locale, boardRule],
+      labelTexture(tileName(corner, boardSelector).toLocaleUpperCase(locale)),
+    [corner, locale, boardSelector],
   );
   useEffect(() => () => texture.dispose(), [texture]);
-  const [x, z] = tileCenter(corner);
-  const drop = LABEL_DROP[corner] ?? 0;
+  const [x, z] = tileCenter(corner, lotsPerSide);
+  const drop = cornerLabelDrop(corner, lotsPerSide);
   return (
     <sprite
       position={[x + drop, LOT_TOP + 0.12, z + drop]}
@@ -1407,34 +1448,38 @@ export function Landmarks({
   animated = false,
   lowGraphics = false,
 }: {
-  boardRule?: BoardRule;
+  boardRule?: BoardSelector;
   state?: PublicState | null;
   /** Ambient life plays; see `useAmbientMotion`, which keeps frames coming. */
   animated?: boolean;
   lowGraphics?: boolean;
 }) {
   const glaze = useDisposable(glassMatcap);
+  const lotsPerSide = getBoardLotsPerSide(boardRule);
+  const stride = lotsPerSide + 1;
   const host = state?.championshipHost ?? null;
   const hostSeat =
     state && host ? (getProperty(state, host.tile)?.owner ?? null) : null;
   return (
     <group>
-      <Island />
+      <Island lotsPerSide={lotsPerSide} />
       <Stadium
         hosted={host !== null}
         hostSeat={hostSeat}
         animated={animated}
         lowGraphics={lowGraphics}
         glaze={glaze}
+        lotsPerSide={lotsPerSide}
       />
-      <Airport animated={animated} glaze={glaze} />
+      <Airport animated={animated} glaze={glaze} lotsPerSide={lotsPerSide} />
       {getBoard(boardRule)
-        .filter((tile) => tile.index % 8 === 0 && tile.kind !== "start")
+        .filter((tile) => tile.index % stride === 0 && tile.kind !== "start")
         .map((tile) => (
           <CornerLabel
             key={tile.index}
             corner={tile.index}
-            boardRule={boardRule}
+            boardSelector={boardRule}
+            lotsPerSide={lotsPerSide}
           />
         ))}
     </group>

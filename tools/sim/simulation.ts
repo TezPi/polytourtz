@@ -9,12 +9,12 @@ import type {
 import {
   applyAction,
   applyEvent,
-  boardRule,
   botAction,
   chanceDeck,
   createGame,
   DEFAULT_GAME_CONFIG,
   economyRule,
+  getBoardSize,
   getProperty,
   getTileBaseRent,
   legalActions,
@@ -68,11 +68,12 @@ export function assertInvariants(state: GameState, expectedCash: number): void {
   ];
   if (remaining.sort().join() !== chanceDeck(state.config).sort().join())
     throw new Error("Card conservation failed");
+  const boardSize = getBoardSize(state.config);
   for (const player of state.players) {
     if (
       !Number.isSafeInteger(player.cash) ||
       player.position < 0 ||
-      player.position >= 32
+      player.position >= boardSize
     )
       throw new Error("Invalid player amounts or position");
     if (
@@ -163,7 +164,7 @@ export function simulateGame(
               event.tile,
               4,
               economyRule(replay.config),
-              boardRule(replay.config),
+              replay.config,
             )
         )
           modifiedHotelRent += event.amount;

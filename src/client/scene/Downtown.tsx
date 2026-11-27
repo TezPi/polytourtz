@@ -2,29 +2,25 @@ import { useFrame } from "@react-three/fiber";
 import gsap from "gsap";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { type BoardRule, getBoard } from "../../shared/board/index.js";
-import type { GameConfig, PublicState } from "../../shared/engine/index.js";
 import {
-  boardRule,
-  economyRule,
-  getProperty,
-} from "../../shared/engine/index.js";
+  type BoardSelector,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
+import type { GameConfig, PublicState } from "../../shared/engine/index.js";
+import { economyRule, getProperty } from "../../shared/engine/index.js";
 import { PLAYER_COLORS, tileColor } from "../ui/board-display.js";
-import { LAWN_TOP, visibleFaces } from "./board-layout.js";
+import { LAWN_TOP, LOTS_PER_SIDE, visibleFaces } from "./board-layout.js";
 import { mix } from "./board-textures.js";
 import {
-  CAROUSEL,
-  FERRIS_WHEEL,
   FERRIS_WHEEL_RADIUS,
-  FOUNTAINS,
-  HELIPAD,
   PLOT_DEPTH,
-  POND,
-  TOWN_TREES,
   type TownPlot,
   type TownTree,
   townCircuit,
+  townMetrics,
   townPlots,
+  townTrees,
 } from "./town-layout.js";
 
 // The living town in the middle of the board. Its plots mirror the board:
@@ -140,31 +136,31 @@ const RESORT: readonly Part[] = [
 
 const SHAPES = ["plinth", "wall", "gable", "crown", "spire", "pole"] as const;
 const CAPACITY = {
-  plinth: 32,
-  wall: 64,
-  gable: 32,
-  crown: 32,
-  spire: 32,
-  pole: 32,
+  plinth: 56,
+  wall: 112,
+  gable: 56,
+  crown: 56,
+  spire: 56,
+  pole: 56,
 };
-const WINDOWS = 640;
-const TREES = 96;
+const WINDOWS = 1024;
+const TREES = 128;
 
 function owned(
   view: PublicState | null,
   plot: TownPlot,
   preview: boolean,
-  rule: BoardRule,
+  selector: BoardSelector,
   maxLevel: number,
 ) {
   const property = view ? getProperty(view, plot.tile) : null;
   if (property?.owner != null)
     return { level: property.level, color: PLAYER_COLORS[property.owner] };
   // The lobby echoes the preview lots: a busy town in the board's colors.
-  if (preview && getBoard(rule)[plot.tile].kind === "city")
+  if (preview && getBoard(selector)[plot.tile]?.kind === "city")
     return {
       level: 1 + (plot.tile % maxLevel),
-      color: tileColor(plot.tile, { boardRule: rule }),
+      color: tileColor(plot.tile, selector),
     };
   return null;
 }
@@ -181,11 +177,13 @@ function TownBuildings({
   handle: { current: DowntownHandle | null };
 }) {
   const boardConfig = state?.config ?? config;
-  const rule = boardConfig ? boardRule(boardConfig) : "country";
+  const selector: BoardSelector = boardConfig ?? "country";
+  const lotsPerSide = getBoardLotsPerSide(selector);
   const maxLevel =
     boardConfig && economyRule(boardConfig) === "prototype" ? 5 : 4;
-  const plots = townPlots(rule);
-  const board = getBoard(rule);
+  const plots = useMemo(() => townPlots(selector), [selector]);
+  const trees = useMemo(() => townTrees(selector), [selector]);
+  const board = useMemo(() => getBoard(selector), [selector]);
   const meshes = useRef<Record<string, THREE.InstancedMesh | null>>({});
   const windows = useRef<THREE.InstancedMesh>(null);
   const trunks = useRef<THREE.InstancedMesh>(null);
@@ -217,10 +215,10 @@ function TownBuildings({
       new Map(
         plots.map((plot) => [
           plot.tile,
-          mix(tileColor(plot.tile, { boardRule: rule }), "#fffaf0", 0.78),
+          mix(tileColor(plot.tile, selector), "#fffaf0", 0.78),
         ]),
       ),
-    [plots, rule],
+    [plots, selector],
   );
   const draw = useCallback(
     (view: PublicState | null, growth: TownGrowth | null) => {
@@ -251,11 +249,11 @@ function TownBuildings({
         );
         treeCount += 1;
       };
-      for (const [index, tree] of TOWN_TREES.entries()) plantTree(tree, index);
+      for (const [index, tree] of trees.entries()) plantTree(tree, index);
       let craneAt: TownPlot | null = null;
       for (const plot of plots) {
         // An unsold plot stays an empty outline; only purchases build here.
-        const building = owned(view, plot, preview, rule, maxLevel);
+        const building = owned(view, plot, preview, selector, maxLevel);
         if (!building) continue;
         const growing = growth?.tile === plot.tile ? growth.progress : null;
         let rise = 1;
@@ -266,13 +264,13 @@ function TownBuildings({
           const progress = THREE.MathUtils.clamp((growing - 0.12) / 0.7, 0, 1);
           rise = Math.max(0.02, growthEase(progress));
           spread = 0.75 + 0.25 * Math.min(1, progress * 1.6);
-          if (board[plot.tile].kind === "city") craneAt = plot;
+          if (board[plot.tile]?.kind === "city") craneAt = plot;
         }
         const parts =
-          board[plot.tile].kind === "resort"
+          board[plot.tile]?.kind === "resort"
             ? RESORT
             : CITY_LEVELS[building.level];
-        const [faceX, faceZ] = visibleFaces(plot.tile);
+        const [faceX, faceZ] = visibleFaces(plot.tile, lotsPerSide);
         const [px, pz] = plot.position;
         const cos = Math.cos(plot.rotation);
         const sin = Math.sin(plot.rotation);
@@ -367,7 +365,7 @@ function TownBuildings({
       if (rig) {
         rig.visible = craneAt !== null && growth !== null;
         if (craneAt && growth) {
-          const [faceX, faceZ] = visibleFaces(craneAt.tile);
+          const [faceX, faceZ] = visibleFaces(craneAt.tile, lotsPerSide);
           const lx = -faceX * 0.13;
           const lz = faceZ * (PLOT_DEPTH / 2 + 0.07);
           const cos = Math.cos(craneAt.rotation);
@@ -384,7 +382,18 @@ function TownBuildings({
         }
       }
     },
-    [preview, dummy, color, facades, plots, board, rule, maxLevel],
+    [
+      preview,
+      dummy,
+      color,
+      facades,
+      plots,
+      trees,
+      board,
+      selector,
+      lotsPerSide,
+      maxLevel,
+    ],
   );
   useEffect(() => {
     handle.current = { draw };
@@ -469,8 +478,8 @@ function TownBuildings({
 }
 
 /** Pre-computed circuit as a flat array for allocation-free lookups. */
-function circuitBuffer() {
-  const points = townCircuit();
+function circuitBuffer(lotsPerSide = LOTS_PER_SIDE) {
+  const points = townCircuit(0.02, lotsPerSide);
   const buffer = new Float32Array(points.length * 2);
   for (const [index, [x, z]] of points.entries()) {
     buffer[index * 2] = x;
@@ -479,8 +488,15 @@ function circuitBuffer() {
   return buffer;
 }
 
-function AmbientLife({ animated }: { animated: boolean }) {
-  const circuit = useMemo(circuitBuffer, []);
+function AmbientLife({
+  animated,
+  lotsPerSide,
+}: {
+  animated: boolean;
+  lotsPerSide: number;
+}) {
+  const metrics = useMemo(() => townMetrics(lotsPerSide), [lotsPerSide]);
+  const circuit = useMemo(() => circuitBuffer(lotsPerSide), [lotsPerSide]);
   const bodies = useRef<THREE.InstancedMesh>(null);
   const cabins = useRef<THREE.InstancedMesh>(null);
   const wheel = useRef<THREE.Group>(null);
@@ -492,7 +508,8 @@ function AmbientLife({ animated }: { animated: boolean }) {
   const rotor = useRef<THREE.Group>(null);
   const jets = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const hub = FERRIS_WHEEL.height - FERRIS_WHEEL_RADIUS - 0.06;
+  const hub =
+    (metrics.ferrisWheel?.height ?? 0.88) - FERRIS_WHEEL_RADIUS - 0.06;
 
   useEffect(() => {
     const body = bodies.current;
@@ -586,12 +603,12 @@ function AmbientLife({ animated }: { animated: boolean }) {
       }
       horse.instanceMatrix.needsUpdate = true;
     }
-    if (boat.current) {
+    if (boat.current && metrics.pond) {
       const sail = time * 0.25;
       boat.current.position.set(
-        POND.position[0] + Math.cos(sail) * 0.13,
+        metrics.pond.position[0] + Math.cos(sail) * 0.13,
         LAWN_TOP + 0.012 + Math.sin(time * 2.1) * 0.006,
-        POND.position[1] + Math.sin(sail) * 0.13,
+        metrics.pond.position[1] + Math.sin(sail) * 0.13,
       );
       boat.current.rotation.set(
         Math.sin(time * 1.7) * 0.06,
@@ -600,7 +617,7 @@ function AmbientLife({ animated }: { animated: boolean }) {
       );
     }
     // The helicopter idles on its pad, then lifts off for a short hop.
-    if (helicopter.current) {
+    if (helicopter.current && metrics.helipad) {
       const cycle = time % 18;
       const flight = cycle > 12 ? Math.sin(((cycle - 12) / 6) * Math.PI) : 0;
       helicopter.current.position.y = LAWN_TOP + 0.02 + flight * 0.32;
@@ -609,8 +626,8 @@ function AmbientLife({ animated }: { animated: boolean }) {
     if (rotor.current) rotor.current.rotation.y = time * 18;
     const jet = jets.current;
     if (jet) {
-      for (let index = 0; index < FOUNTAINS.length; index++) {
-        const fountain = FOUNTAINS[index];
+      for (let index = 0; index < metrics.fountains.length; index++) {
+        const fountain = metrics.fountains[index];
         const pulse = 0.75 + Math.sin(time * 2.6 + index * 1.7) * 0.25;
         dummy.rotation.set(0, 0, 0);
         dummy.position.set(
@@ -660,7 +677,7 @@ function AmbientLife({ animated }: { animated: boolean }) {
     const basins = fountainBasins.current;
     if (!basins) return;
     const object = new THREE.Object3D();
-    for (const [index, fountain] of FOUNTAINS.entries()) {
+    for (const [index, fountain] of metrics.fountains.entries()) {
       object.position.set(
         fountain.position[0],
         LAWN_TOP + 0.015,
@@ -671,7 +688,7 @@ function AmbientLife({ animated }: { animated: boolean }) {
     }
     basins.instanceMatrix.needsUpdate = true;
     basins.computeBoundingSphere();
-  }, []);
+  }, [metrics.fountains]);
 
   return (
     <>
@@ -692,133 +709,147 @@ function AmbientLife({ animated }: { animated: boolean }) {
         <boxGeometry />
         <meshStandardMaterial color="#3d6277" roughness={0.3} />
       </instancedMesh>
-      {/* The big wheel turns square to the camera. */}
-      <group
-        position={[
-          FERRIS_WHEEL.position[0],
-          LAWN_TOP,
-          FERRIS_WHEEL.position[1],
-        ]}
-        rotation={[0, Math.PI / 4, 0]}
-      >
-        {[-1, 1].map((front) =>
-          [-1, 1].map((side) => (
-            <mesh
-              key={`${front}${side}`}
-              position={[(side * legSpread) / 2, hub / 2, front * 0.045]}
-              rotation={[0, 0, side * legTilt]}
-              castShadow
-            >
-              <boxGeometry args={[0.022, legLength, 0.022]} />
+      {metrics.ferrisWheel && (
+        <group
+          position={[
+            metrics.ferrisWheel.position[0],
+            LAWN_TOP,
+            metrics.ferrisWheel.position[1],
+          ]}
+          rotation={[0, Math.PI / 4, 0]}
+        >
+          {[-1, 1].map((front) =>
+            [-1, 1].map((side) => (
+              <mesh
+                key={`${front}${side}`}
+                position={[(side * legSpread) / 2, hub / 2, front * 0.045]}
+                rotation={[0, 0, side * legTilt]}
+                castShadow
+              >
+                <boxGeometry args={[0.022, legLength, 0.022]} />
+                <meshStandardMaterial color="#fffaf0" />
+              </mesh>
+            )),
+          )}
+          <group ref={wheel} position={[0, hub, 0]}>
+            <mesh castShadow>
+              <torusGeometry args={[FERRIS_WHEEL_RADIUS, 0.013, 6, 40]} />
+              <meshStandardMaterial color="#e2574a" />
+            </mesh>
+            <mesh>
+              <torusGeometry
+                args={[FERRIS_WHEEL_RADIUS * 0.55, 0.008, 5, 28]}
+              />
               <meshStandardMaterial color="#fffaf0" />
             </mesh>
-          )),
-        )}
-        <group ref={wheel} position={[0, hub, 0]}>
-          <mesh castShadow>
-            <torusGeometry args={[FERRIS_WHEEL_RADIUS, 0.013, 6, 40]} />
-            <meshStandardMaterial color="#e2574a" />
-          </mesh>
-          <mesh>
-            <torusGeometry args={[FERRIS_WHEEL_RADIUS * 0.55, 0.008, 5, 28]} />
-            <meshStandardMaterial color="#fffaf0" />
-          </mesh>
-          <instancedMesh ref={spokeMesh} args={[undefined, undefined, 8]}>
+            <instancedMesh ref={spokeMesh} args={[undefined, undefined, 8]}>
+              <boxGeometry />
+              <meshStandardMaterial color="#fffaf0" />
+            </instancedMesh>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.035, 0.035, 0.11, 10]} />
+              <meshStandardMaterial color={GOLD} />
+            </mesh>
+          </group>
+          <instancedMesh
+            ref={gondolas}
+            args={[undefined, undefined, CABIN_COLORS.length]}
+            frustumCulled={false}
+            castShadow
+          >
             <boxGeometry />
-            <meshStandardMaterial color="#fffaf0" />
+            <meshStandardMaterial roughness={0.6} />
           </instancedMesh>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.035, 0.035, 0.11, 10]} />
+        </group>
+      )}
+      {metrics.carousel && (
+        <group
+          ref={carousel}
+          position={[
+            metrics.carousel.position[0],
+            LAWN_TOP,
+            metrics.carousel.position[1],
+          ]}
+        >
+          <mesh position={[0, 0.02, 0]} receiveShadow castShadow>
+            <cylinderGeometry args={[0.2, 0.21, 0.04, 20]} />
+            <meshStandardMaterial color="#fffaf0" />
+          </mesh>
+          <mesh position={[0, 0.18, 0]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.32, 8]} />
             <meshStandardMaterial color={GOLD} />
           </mesh>
-        </group>
-        <instancedMesh
-          ref={gondolas}
-          args={[undefined, undefined, CABIN_COLORS.length]}
-          frustumCulled={false}
-          castShadow
-        >
-          <boxGeometry />
-          <meshStandardMaterial roughness={0.6} />
-        </instancedMesh>
-      </group>
-      {/* A carousel with bobbing horses under a striped canopy. */}
-      <group
-        ref={carousel}
-        position={[CAROUSEL.position[0], LAWN_TOP, CAROUSEL.position[1]]}
-      >
-        <mesh position={[0, 0.02, 0]} receiveShadow castShadow>
-          <cylinderGeometry args={[0.2, 0.21, 0.04, 20]} />
-          <meshStandardMaterial color="#fffaf0" />
-        </mesh>
-        <mesh position={[0, 0.18, 0]}>
-          <cylinderGeometry args={[0.025, 0.025, 0.32, 8]} />
-          <meshStandardMaterial color={GOLD} />
-        </mesh>
-        <mesh position={[0, 0.37, 0]} castShadow>
-          <coneGeometry args={[0.22, 0.1, 12]} />
-          <meshStandardMaterial color="#e2574a" flatShading />
-        </mesh>
-        <mesh position={[0, 0.31, 0]}>
-          <cylinderGeometry args={[0.215, 0.215, 0.025, 12, 1, true]} />
-          <meshStandardMaterial color="#fffaf0" side={THREE.DoubleSide} />
-        </mesh>
-        <instancedMesh
-          ref={horses}
-          args={[undefined, undefined, 6]}
-          frustumCulled={false}
-          castShadow
-        >
-          <boxGeometry />
-          <meshStandardMaterial color="#fff2d6" />
-        </instancedMesh>
-      </group>
-      {/* A little sailing boat on the pond. */}
-      <group ref={boat}>
-        <mesh position={[0, 0.015, 0]} scale={[0.05, 0.03, 0.11]} castShadow>
-          <boxGeometry />
-          <meshStandardMaterial color="#fffaf0" />
-        </mesh>
-        <mesh position={[0, 0.09, 0.005]} rotation={[0, Math.PI / 2, 0]}>
-          <coneGeometry args={[0.045, 0.13, 3]} />
-          <meshStandardMaterial color="#ffcb55" flatShading />
-        </mesh>
-      </group>
-      {/* A helicopter on its pad near the world tour. */}
-      <group
-        ref={helicopter}
-        position={[HELIPAD.position[0], LAWN_TOP, HELIPAD.position[1]]}
-      >
-        <mesh position={[0, 0.07, 0]} scale={[0.1, 0.065, 0.065]} castShadow>
-          <sphereGeometry args={[1, 12, 8]} />
-          <meshStandardMaterial color="#ffcb55" roughness={0.4} />
-        </mesh>
-        <mesh position={[-0.13, 0.08, 0]} castShadow>
-          <boxGeometry args={[0.16, 0.025, 0.025]} />
-          <meshStandardMaterial color="#ffcb55" />
-        </mesh>
-        <mesh position={[0.05, 0.085, 0]} scale={[0.04, 0.035, 0.05]}>
-          <sphereGeometry args={[1, 8, 6]} />
-          <meshStandardMaterial color="#3d6277" roughness={0.25} />
-        </mesh>
-        {[-1, 1].map((side) => (
-          <mesh key={side} position={[0, 0.008, side * 0.045]}>
-            <boxGeometry args={[0.17, 0.012, 0.012]} />
-            <meshStandardMaterial color="#5c6b74" />
+          <mesh position={[0, 0.37, 0]} castShadow>
+            <coneGeometry args={[0.22, 0.1, 12]} />
+            <meshStandardMaterial color="#e2574a" flatShading />
           </mesh>
-        ))}
-        <group ref={rotor} position={[0, 0.145, 0]}>
-          {[0, Math.PI / 2].map((angle) => (
-            <mesh key={angle} rotation={[0, angle, 0]}>
-              <boxGeometry args={[0.32, 0.006, 0.022]} />
-              <meshStandardMaterial color="#3f4b52" />
+          <mesh position={[0, 0.31, 0]}>
+            <cylinderGeometry args={[0.215, 0.215, 0.025, 12, 1, true]} />
+            <meshStandardMaterial color="#fffaf0" side={THREE.DoubleSide} />
+          </mesh>
+          <instancedMesh
+            ref={horses}
+            args={[undefined, undefined, 6]}
+            frustumCulled={false}
+            castShadow
+          >
+            <boxGeometry />
+            <meshStandardMaterial color="#fff2d6" />
+          </instancedMesh>
+        </group>
+      )}
+      {metrics.pond && (
+        <group ref={boat}>
+          <mesh position={[0, 0.015, 0]} scale={[0.05, 0.03, 0.11]} castShadow>
+            <boxGeometry />
+            <meshStandardMaterial color="#fffaf0" />
+          </mesh>
+          <mesh position={[0, 0.09, 0.005]} rotation={[0, Math.PI / 2, 0]}>
+            <coneGeometry args={[0.045, 0.13, 3]} />
+            <meshStandardMaterial color="#ffcb55" flatShading />
+          </mesh>
+        </group>
+      )}
+      {metrics.helipad && (
+        <group
+          ref={helicopter}
+          position={[
+            metrics.helipad.position[0],
+            LAWN_TOP,
+            metrics.helipad.position[1],
+          ]}
+        >
+          <mesh position={[0, 0.07, 0]} scale={[0.1, 0.065, 0.065]} castShadow>
+            <sphereGeometry args={[1, 12, 8]} />
+            <meshStandardMaterial color="#ffcb55" roughness={0.4} />
+          </mesh>
+          <mesh position={[-0.13, 0.08, 0]} castShadow>
+            <boxGeometry args={[0.16, 0.025, 0.025]} />
+            <meshStandardMaterial color="#ffcb55" />
+          </mesh>
+          <mesh position={[0.05, 0.085, 0]} scale={[0.04, 0.035, 0.05]}>
+            <sphereGeometry args={[1, 8, 6]} />
+            <meshStandardMaterial color="#3d6277" roughness={0.25} />
+          </mesh>
+          {[-1, 1].map((side) => (
+            <mesh key={side} position={[0, 0.008, side * 0.045]}>
+              <boxGeometry args={[0.17, 0.012, 0.012]} />
+              <meshStandardMaterial color="#5c6b74" />
             </mesh>
           ))}
+          <group ref={rotor} position={[0, 0.145, 0]}>
+            {[0, Math.PI / 2].map((angle) => (
+              <mesh key={angle} rotation={[0, angle, 0]}>
+                <boxGeometry args={[0.32, 0.006, 0.022]} />
+                <meshStandardMaterial color="#3f4b52" />
+              </mesh>
+            ))}
+          </group>
         </group>
-      </group>
+      )}
       <instancedMesh
         ref={fountainBasins}
-        args={[undefined, undefined, FOUNTAINS.length]}
+        args={[undefined, undefined, metrics.fountains.length]}
         receiveShadow
       >
         <cylinderGeometry args={[0.075, 0.08, 0.03, 14]} />
@@ -826,7 +857,7 @@ function AmbientLife({ animated }: { animated: boolean }) {
       </instancedMesh>
       <instancedMesh
         ref={jets}
-        args={[undefined, undefined, FOUNTAINS.length]}
+        args={[undefined, undefined, metrics.fountains.length]}
         frustumCulled={false}
       >
         <coneGeometry args={[0.035, 0.16, 8]} />
@@ -855,6 +886,7 @@ export function Downtown({
   animated: boolean;
   handle: { current: DowntownHandle | null };
 }) {
+  const lotsPerSide = getBoardLotsPerSide(state?.config ?? config ?? "country");
   return (
     <group>
       <TownBuildings
@@ -863,7 +895,7 @@ export function Downtown({
         preview={preview}
         handle={handle}
       />
-      <AmbientLife animated={animated} />
+      <AmbientLife animated={animated} lotsPerSide={lotsPerSide} />
     </group>
   );
 }

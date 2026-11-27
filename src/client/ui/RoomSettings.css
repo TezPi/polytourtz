@@ -209,6 +209,29 @@
   height: 44px;
 }
 
+.room-setting-map-pills {
+  flex-wrap: wrap;
+}
+
+.room-setting-map-pills .room-setting-pill {
+  flex: 1 1 110px;
+}
+
+.room-setting-map-pills .room-setting-pill > span {
+  gap: 5px;
+  font-size: 14px;
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.room-setting-map-tag {
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: #1d3a4614;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .room-setting-time-row {
   display: flex;
   align-items: center;
@@ -373,8 +396,70 @@
   border-color: var(--settings-blue);
 }
 
-.room-setting-bots {
+.room-setting-bots,
+.room-setting-map {
   grid-column: 1 / -1;
+}
+
+.room-setting-locations {
+  margin-top: 12px;
+}
+
+.room-setting-locations .room-setting-heading output {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.room-setting-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.room-setting-stepper .room-setting-range {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.room-setting-step-btn,
+.room-setting-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid #7999a2;
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.room-setting-step-btn {
+  width: 34px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.room-setting-reset-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.room-setting-step-btn:hover:not(:disabled),
+.room-setting-reset-btn:hover:not(:disabled) {
+  border-color: var(--settings-blue);
+  background: #edf5fc;
+}
+
+.room-setting-step-btn:disabled,
+.room-setting-reset-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .room-setting-bot-option {

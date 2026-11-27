@@ -57,7 +57,6 @@ import {
   TILE_ICONS,
   tileColor,
   tileName,
-  tilePrice,
 } from "./ui/board-display.js";
 import {
   boardPickActions,
@@ -409,17 +408,7 @@ function BoardFallback({
                 ? `+${money(propertyRefund(state, tile.index))}`
                 : state && owner != null
                   ? money(propertyRent(state, tile.index))
-                  : tilePrice(
-                        tile.index,
-                        state ?? (config ? { config } : null),
-                      ) != null
-                    ? money(
-                        tilePrice(
-                          tile.index,
-                          state ?? (config ? { config } : null),
-                        ) ?? 0,
-                      )
-                    : TILE_ICONS[tile.kind]}
+                  : TILE_ICONS[tile.kind]}
             </b>
           </ActionButton>
         );

@@ -1,5 +1,11 @@
-import { BOARD, isCityTile } from "./board.js";
-import type { BoardRule, BuildLevel, EconomyRule } from "./types.js";
+import {
+  BOARD,
+  type BoardSelector,
+  getBoard,
+  isCityTile,
+  LEGACY_BOARD,
+} from "./board.js";
+import type { BoardRule, BuildLevel, CityTile, EconomyRule } from "./types.js";
 
 type CityConfig = {
   readonly tile: number;
@@ -244,25 +250,131 @@ export const REFERENCE_CITY_ECONOMY: readonly ReferenceCityConfig[] =
     hotel: [150_000, 250_000, 375_000, 500_000][tile.side - 1],
   }));
 
+const CUSTOM_ECONOMY_CACHE = new Map<
+  string,
+  ReadonlyMap<number, ReferenceCityConfig>
+>();
+
+function roundTo(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+function interpolateTuple(
+  a: readonly [number, number, number, number, number],
+  b: readonly [number, number, number, number, number],
+  t: number,
+): readonly [number, number, number, number, number] {
+  return [
+    roundTo(a[0] + (b[0] - a[0]) * t, 1_000),
+    roundTo(a[1] + (b[1] - a[1]) * t, 1_000),
+    roundTo(a[2] + (b[2] - a[2]) * t, 1_000),
+    roundTo(a[3] + (b[3] - a[3]) * t, 1_000),
+    roundTo(a[4] + (b[4] - a[4]) * t, 1_000),
+  ];
+}
+
+function customBoardEconomy(
+  board: BoardSelector,
+  rule: EconomyRule,
+): ReadonlyMap<number, ReferenceCityConfig> {
+  const tiles = getBoard(board);
+  const cities = tiles.filter(isCityTile);
+  const key = `${rule}:${tiles.length}:${cities.map((c) => c.index).join(",")}`;
+  const cached = CUSTOM_ECONOMY_CACHE.get(key);
+  if (cached) return cached;
+
+  const map = new Map<number, ReferenceCityConfig>();
+  const baseRows = rule === "reference" ? REFERENCE_CITY_ECONOMY : CITY_ECONOMY;
+  const maxIdx = Math.max(1, cities.length - 1);
+  for (let i = 0; i < cities.length; i++) {
+    const cityTile: CityTile = cities[i];
+    const pos = (i / maxIdx) * (baseRows.length - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.min(baseRows.length - 1, lo + 1);
+    const t = pos - lo;
+    const rowLo = baseRows[lo];
+    const rowHi = baseRows[hi];
+    const land = roundTo(rowLo.land + (rowHi.land - rowLo.land) * t, 10_000);
+    const sideIdx = cityTile.side - 1;
+    const house =
+      rule === "reference"
+        ? [50_000, 100_000, 150_000, 200_000][sideIdx]
+        : roundTo(rowLo.house + (rowHi.house - rowLo.house) * t, 10_000);
+    const hotel =
+      rule === "reference"
+        ? [150_000, 250_000, 375_000, 500_000][sideIdx]
+        : roundTo(rowLo.hotel + (rowHi.hotel - rowLo.hotel) * t, 10_000);
+    const rent =
+      rule === "reference"
+        ? interpolateTuple(
+            (rowLo as ReferenceCityConfig).rent,
+            (rowHi as ReferenceCityConfig).rent,
+            t,
+          )
+        : ([
+            Math.ceil((land * 20) / 100),
+            Math.ceil((land * 60) / 100),
+            Math.ceil((land * 100) / 100),
+            Math.ceil((land * 140) / 100),
+            Math.ceil((land * 280) / 100),
+          ] as const);
+    map.set(cityTile.index, {
+      tile: cityTile.index,
+      land,
+      house,
+      hotel,
+      rent,
+    });
+  }
+  CUSTOM_ECONOMY_CACHE.set(key, map);
+  return map;
+}
+
 function defaultBoard(rule: EconomyRule): BoardRule {
   return rule === "reference" ? "country" : "legacy";
 }
-function city(tile: number, rule: EconomyRule, board: BoardRule): CityConfig {
+function isStandardBoard(board: BoardSelector): BoardRule | null {
+  if (typeof board === "string") return board;
+  const resolved = getBoard(board);
+  if (resolved === BOARD) return "country";
+  if (resolved === LEGACY_BOARD) return "legacy";
+  return null;
+}
+function city(
+  tile: number,
+  rule: EconomyRule,
+  board: BoardSelector,
+): CityConfig {
+  const std = isStandardBoard(board);
+  if (!std) {
+    const config = customBoardEconomy(board, rule).get(tile);
+    if (!config) throw new RangeError(`Tile ${tile} is not a city`);
+    return config;
+  }
   const table =
     rule === "reference"
-      ? board === "legacy"
+      ? std === "legacy"
         ? LEGACY_REFERENCE_CITY_ECONOMY
         : REFERENCE_CITY_ECONOMY
-      : board === "legacy"
+      : std === "legacy"
         ? LEGACY_CITY_ECONOMY
         : CITY_ECONOMY;
   const config = table.find((config) => config.tile === tile);
   if (!config) throw new RangeError(`Tile ${tile} is not a city`);
   return config;
 }
-function referenceCity(tile: number, board: BoardRule): ReferenceCityConfig {
+function referenceCity(
+  tile: number,
+  board: BoardSelector,
+): ReferenceCityConfig {
+  const std = isStandardBoard(board);
+  if (!std) {
+    const config = customBoardEconomy(board, "reference").get(tile);
+    if (!config) throw new RangeError(`Tile ${tile} is not a city`);
+    return config;
+  }
   const table =
-    board === "legacy" ? LEGACY_REFERENCE_CITY_ECONOMY : REFERENCE_CITY_ECONOMY;
+    std === "legacy" ? LEGACY_REFERENCE_CITY_ECONOMY : REFERENCE_CITY_ECONOMY;
   const config = table.find((config) => config.tile === tile);
   if (!config) throw new RangeError(`Tile ${tile} is not a city`);
   return config;
@@ -275,7 +387,7 @@ function assertLevel(level: BuildLevel, rule: EconomyRule): void {
 export function getTileLandPrice(
   tile: number,
   rule: EconomyRule,
-  board: BoardRule = defaultBoard(rule),
+  board: BoardSelector = defaultBoard(rule),
 ): number {
   return city(tile, rule, board).land;
 }
@@ -283,7 +395,7 @@ export function getTileBuildCost(
   tile: number,
   level: BuildLevel,
   rule: EconomyRule,
-  board: BoardRule = defaultBoard(rule),
+  board: BoardSelector = defaultBoard(rule),
 ): number {
   assertLevel(level, rule);
   const config = city(tile, rule, board);
@@ -299,7 +411,7 @@ export function getTileInvestedValue(
   tile: number,
   level: BuildLevel,
   rule: EconomyRule,
-  board: BoardRule = defaultBoard(rule),
+  board: BoardSelector = defaultBoard(rule),
 ): number {
   let total = 0;
   for (let current = 0; current <= level; current++)
@@ -311,7 +423,7 @@ export function getTileBaseRent(
   tile: number,
   level: BuildLevel,
   rule: EconomyRule,
-  board: BoardRule = defaultBoard(rule),
+  board: BoardSelector = defaultBoard(rule),
 ): number {
   assertLevel(level, rule);
   if (rule === "prototype")

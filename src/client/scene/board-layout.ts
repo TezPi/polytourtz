@@ -14,12 +14,21 @@ export type Vec3 = readonly [number, number, number];
 export const LOT_WIDTH = 1;
 export const LOT_DEPTH = 1.55;
 export const LOTS_PER_SIDE = 7;
+export function boardHalfFor(lotsPerSide = LOTS_PER_SIDE) {
+  return LOT_DEPTH + (lotsPerSide / 2) * LOT_WIDTH;
+}
+export function innerHalfFor(lotsPerSide = LOTS_PER_SIDE) {
+  return boardHalfFor(lotsPerSide) - LOT_DEPTH;
+}
+export function lawnHalfFor(lotsPerSide = LOTS_PER_SIDE) {
+  return innerHalfFor(lotsPerSide) - ROAD_WIDTH;
+}
 /** Half the side of the whole board square. */
-export const BOARD_HALF = LOT_DEPTH + (LOTS_PER_SIDE / 2) * LOT_WIDTH;
+export const BOARD_HALF = boardHalfFor();
 /** Half the side of the square enclosed by the lots. */
-export const INNER_HALF = BOARD_HALF - LOT_DEPTH;
+export const INNER_HALF = innerHalfFor();
 export const ROAD_WIDTH = 0.62;
-export const LAWN_HALF = INNER_HALF - ROAD_WIDTH;
+export const LAWN_HALF = lawnHalfFor();
 // A lot is printed in two parts, like the reference boards: the city ground
 // at the screen-top end, with its buildings and name, and the price strip at
 // the screen-bottom end.
@@ -60,21 +69,27 @@ const SIDES: readonly SideFrame[] = [
   { along: [0, 1], inward: [-1, 0], rotation: -Math.PI / 2, front: true },
 ];
 
-export function tileSide(index: number): 0 | 1 | 2 | 3 {
-  return (Math.floor(index / 8) % 4) as 0 | 1 | 2 | 3;
+export function tileSide(
+  index: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): 0 | 1 | 2 | 3 {
+  const stride = lotsPerSide + 1;
+  return (Math.floor(index / stride) % 4) as 0 | 1 | 2 | 3;
 }
 
 export function sideFrame(side: number): SideFrame {
   return SIDES[side];
 }
 
-export function isCorner(index: number) {
-  return index % 8 === 0;
+export function isCorner(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  return index % (lotsPerSide + 1) === 0;
 }
 
 /** [extent along play, extent toward the center] of a tile. */
-export function tileSize(index: number): Vec2 {
-  return isCorner(index) ? [LOT_DEPTH, LOT_DEPTH] : [LOT_WIDTH, LOT_DEPTH];
+export function tileSize(index: number, lotsPerSide = LOTS_PER_SIDE): Vec2 {
+  return isCorner(index, lotsPerSide)
+    ? [LOT_DEPTH, LOT_DEPTH]
+    : [LOT_WIDTH, LOT_DEPTH];
 }
 
 function fromSide(side: number, u: number, v: number): Vec2 {
@@ -84,12 +99,13 @@ function fromSide(side: number, u: number, v: number): Vec2 {
   return [along[0] * u - inward[0] * v, along[1] * u - inward[1] * v];
 }
 
-export function tileCenter(index: number): Vec2 {
-  const step = index % 8;
-  const outward = BOARD_HALF - LOT_DEPTH / 2;
+export function tileCenter(index: number, lotsPerSide = LOTS_PER_SIDE): Vec2 {
+  const stride = lotsPerSide + 1;
+  const step = index % stride;
+  const outward = boardHalfFor(lotsPerSide) - LOT_DEPTH / 2;
   return fromSide(
-    tileSide(index),
-    step === 0 ? -outward : (step - 4) * LOT_WIDTH,
+    tileSide(index, lotsPerSide),
+    step === 0 ? -outward : (step - stride / 2) * LOT_WIDTH,
     outward,
   );
 }
@@ -102,8 +118,8 @@ export function tileCenter(index: number): Vec2 {
 export const START_BANK_PRINT: Vec2 = [0.74, 0.27];
 
 /** World x/z of the bank printed on Start, where bank money flies. */
-export function startBankPoint(): Vec2 {
-  const [x, z] = tileCenter(0);
+export function startBankPoint(lotsPerSide = LOTS_PER_SIDE): Vec2 {
+  const [x, z] = tileCenter(0, lotsPerSide);
   return [
     x + (START_BANK_PRINT[0] - 0.5) * LOT_DEPTH,
     z + (START_BANK_PRINT[1] - 0.5) * LOT_DEPTH,
@@ -111,25 +127,30 @@ export function startBankPoint(): Vec2 {
 }
 
 /** Tile-local coordinates (x along play, z toward the center) to world x/z. */
-export function tilePoint(index: number, localX: number, localZ: number): Vec2 {
-  const [x, z] = tileCenter(index);
-  const { along, inward } = SIDES[tileSide(index)];
+export function tilePoint(
+  index: number,
+  localX: number,
+  localZ: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): Vec2 {
+  const [x, z] = tileCenter(index, lotsPerSide);
+  const { along, inward } = SIDES[tileSide(index, lotsPerSide)];
   return [
     x + along[0] * localX + inward[0] * localZ,
     z + along[1] * localX + inward[1] * localZ,
   ];
 }
 
-export function tileRotation(index: number) {
-  return SIDES[tileSide(index)].rotation;
+export function tileRotation(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  return SIDES[tileSide(index, lotsPerSide)].rotation;
 }
 
 /**
  * Y rotation of a tile's printed face. Text reads left to right and stays
  * upright on screen on every side, as on the reference boards.
  */
-export function faceRotation(index: number) {
-  const { rotation, front } = SIDES[tileSide(index)];
+export function faceRotation(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  const { rotation, front } = SIDES[tileSide(index, lotsPerSide)];
   return front ? rotation + Math.PI : rotation;
 }
 
@@ -137,26 +158,26 @@ export function faceRotation(index: number) {
  * Sign of the tile-local z axis that points up the screen. Buildings stand at
  * that end of a lot, so they never hide its printed name and price.
  */
-export function screenTop(index: number): 1 | -1 {
-  return SIDES[tileSide(index)].front ? 1 : -1;
+export function screenTop(index: number, lotsPerSide = LOTS_PER_SIDE): 1 | -1 {
+  return SIDES[tileSide(index, lotsPerSide)].front ? 1 : -1;
 }
 
 /** Tile-local z of the center of the building plot. */
-export function buildingBandZ(index: number) {
-  return screenTop(index) * (LOT_DEPTH / 2 - BUILDING_BAND / 2);
+export function buildingBandZ(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  return screenTop(index, lotsPerSide) * (LOT_DEPTH / 2 - BUILDING_BAND / 2);
 }
 
 /** Tile-local z of the center of the price strip. */
-export function priceBandZ(index: number) {
-  return -screenTop(index) * (LOT_DEPTH / 2 - PRICE_BAND / 2);
+export function priceBandZ(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  return -screenTop(index, lotsPerSide) * (LOT_DEPTH / 2 - PRICE_BAND / 2);
 }
 
 /**
  * Signs of the tile-local x and z faces turned toward the camera. Windows and
  * doors go on these faces so every building shows its facade.
  */
-export function visibleFaces(index: number): Vec2 {
-  const { along, inward } = SIDES[tileSide(index)];
+export function visibleFaces(index: number, lotsPerSide = LOTS_PER_SIDE): Vec2 {
+  const { along, inward } = SIDES[tileSide(index, lotsPerSide)];
   const along2 = CAMERA_OFFSET[0] * along[0] + CAMERA_OFFSET[2] * along[1];
   const inward2 = CAMERA_OFFSET[0] * inward[0] + CAMERA_OFFSET[2] * inward[1];
   return [along2 > 0 ? 1 : -1, inward2 > 0 ? 1 : -1];
@@ -174,26 +195,33 @@ const PAWN_SLOTS: readonly Vec2[] = [
  * Where a seat's pawn stands for a tile. Pawns walk on the road just inside
  * the lots, side by side, never on a printed amount or inside a building.
  */
-export function pawnSpot(seat: Seat, index: number): Vec2 {
-  const side = tileSide(index);
-  const step = index % 8;
+export function pawnSpot(
+  seat: Seat,
+  index: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): Vec2 {
+  const stride = lotsPerSide + 1;
+  const side = tileSide(index, lotsPerSide);
+  const step = index % stride;
+  const innerHalf = innerHalfFor(lotsPerSide);
   const [slotAlong, slotAcross] = PAWN_SLOTS[seat];
-  if (isCorner(index)) {
+  if (isCorner(index, lotsPerSide)) {
     // The inner quarter of a corner square stays free of its landmark.
-    const reach = INNER_HALF + LOT_DEPTH / 4;
+    const reach = innerHalf + LOT_DEPTH / 4;
     return fromSide(side, -reach - slotAlong * 0.19, reach + slotAcross * 0.19);
   }
   // The lots beside a corner share the road's corner square. Their pawns step
   // away from it, and slots mirror around each corner, so the only slots that
   // come close there always belong to the same seat.
-  const towardCorner = step < 4 ? -1 : 1;
-  const clearance = step === 1 || step === 7 ? 0.22 : 0;
+  const mid = stride / 2;
+  const towardCorner = step < mid ? -1 : 1;
+  const clearance = step === 1 || step === lotsPerSide ? 0.22 : 0;
   return fromSide(
     side,
-    (step - 4) * LOT_WIDTH -
+    (step - mid) * LOT_WIDTH -
       towardCorner * clearance +
       towardCorner * slotAlong * 0.17,
-    INNER_HALF - ROAD_WIDTH / 2 + slotAcross * 0.155,
+    innerHalf - ROAD_WIDTH / 2 + slotAcross * 0.155,
   );
 }
 
@@ -202,30 +230,36 @@ export function pawnSpot(seat: Seat, index: number): Vec2 {
  * pawn turns a corner: on the road's corner square, a pawn's width inside its
  * outer edge, clear of the pawns standing on the lots beside it.
  */
-const CORNER_TURN = INNER_HALF - 0.2;
-
-/**
- * Where a walking pawn touches down on a tile it only passes. A corner is
- * counted like any tile, but the pawn keeps to the road and turns on the road's
- * corner square instead of climbing onto the corner and back down.
- */
-export function passingSpot(seat: Seat, index: number): Vec2 {
-  if (!isCorner(index)) return pawnSpot(seat, index);
-  return fromSide(tileSide(index), -CORNER_TURN, CORNER_TURN);
+export function passingSpot(
+  seat: Seat,
+  index: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): Vec2 {
+  if (!isCorner(index, lotsPerSide)) return pawnSpot(seat, index, lotsPerSide);
+  const cornerTurn = innerHalfFor(lotsPerSide) - 0.2;
+  return fromSide(tileSide(index, lotsPerSide), -cornerTurn, cornerTurn);
 }
 
 /** Each seat keeps its reserve beside the board edge nearest its corner HUD. */
-export function reserveAnchor(seat: Seat): {
+export function reserveAnchor(
+  seat: Seat,
+  lotsPerSide = LOTS_PER_SIDE,
+): {
   position: Vec2;
   rotation: number;
 } {
+  const boardHalf = boardHalfFor(lotsPerSide);
   if (seat === 4)
     return {
-      position: fromSide(2, 3.2, BOARD_HALF + 1.2),
+      position: fromSide(
+        2,
+        Math.min(3.2, innerHalfFor(lotsPerSide) - 0.3),
+        boardHalf + 1.2,
+      ),
       rotation: SIDES[2].rotation,
     };
   return {
-    position: fromSide(seat, 0, BOARD_HALF + 1.2),
+    position: fromSide(seat, 0, boardHalf + 1.2),
     rotation: SIDES[seat].rotation,
   };
 }

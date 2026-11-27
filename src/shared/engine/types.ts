@@ -3,6 +3,7 @@ import type {
   BuildLevel,
   ChanceRule,
   EconomyRule,
+  MapId,
   WorldTourRule,
 } from "../board/types.js";
 import type { PlayerCosmetics } from "./cosmetics.js";
@@ -46,6 +47,10 @@ export type GameConfig = {
   readonly economyRule?: EconomyRule;
   /** Missing on saved matches: keep the original production tile indices. */
   readonly boardRule?: BoardRule;
+  /** Thematic board geography; absent on saved matches means World. */
+  readonly mapId?: MapId;
+  /** Signed delta relative to 20 standard cities; absent means 0. */
+  readonly mapExtraLocations?: number;
   /** Missing on saves before rules version 6: own properties only when none is free. */
   readonly worldTourRule?: WorldTourRule;
   /** Missing on saves before rules version 8: four resorts pay what three do. */

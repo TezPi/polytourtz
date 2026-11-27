@@ -33,3 +33,30 @@ describe("Escape card intents", () => {
     );
   });
 });
+
+describe("Custom maps and location counts", () => {
+  it("defaults to world +0 and accepts usa/vietnam/japan with adjustable extra locations", () => {
+    expect(RoomConfigSchema.parse({})).toMatchObject({
+      mapId: "world",
+      mapExtraLocations: 0,
+    });
+    expect(
+      RoomConfigSchema.parse({ mapId: "usa", mapExtraLocations: 15 }),
+    ).toMatchObject({ mapId: "usa", mapExtraLocations: 15 });
+    expect(
+      RoomConfigSchema.parse({ mapId: "vietnam", mapExtraLocations: -8 }),
+    ).toMatchObject({ mapId: "vietnam", mapExtraLocations: -8 });
+    expect(
+      RoomConfigSchema.parse({ mapId: "japan", mapExtraLocations: 24 }),
+    ).toMatchObject({ mapId: "japan", mapExtraLocations: 24 });
+    expect(RoomConfigSchema.safeParse({ mapId: "mars" }).success).toBe(false);
+    expect(
+      RoomConfigSchema.safeParse({ mapId: "usa", mapExtraLocations: -9 })
+        .success,
+    ).toBe(false);
+    expect(
+      RoomConfigSchema.safeParse({ mapId: "japan", mapExtraLocations: 25 })
+        .success,
+    ).toBe(false);
+  });
+});

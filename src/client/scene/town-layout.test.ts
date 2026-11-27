@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, getBoard } from "../../shared/board/index.js";
+import {
+  BOARD,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
 import type { Seat } from "../../shared/engine/index.js";
 import {
   CAMERA_OFFSET,
@@ -40,6 +44,7 @@ import {
   TURNING_CIRCLE,
   TURNING_CIRCLE_PAVED,
   townCircuit,
+  townMetrics,
   townPlots,
 } from "./town-layout.js";
 
@@ -368,6 +373,52 @@ describe.each(["country", "legacy"] as const)("%s town layout", (rule) => {
       expect(onRing || onAvenueLane || onTurningCircle, `${x}, ${z}`).toBe(
         true,
       );
+    }
+  });
+
+  it("keeps plots inside the lawn and avoids plot overlaps across all custom map sizes", () => {
+    for (const extra of [-8, 10, 15, 20, 24]) {
+      const cfg = {
+        boardRule: "country" as const,
+        mapId: "vietnam" as const,
+        mapExtraLocations: extra,
+      };
+      const board = getBoard(cfg);
+      const lps = getBoardLotsPerSide(cfg);
+      const metrics = townMetrics(lps);
+      const plots = townPlots(cfg);
+      const owned = board.filter(
+        (tile) => tile.kind === "city" || tile.kind === "resort",
+      );
+      expect(plots).toHaveLength(owned.length);
+      for (const plot of plots) {
+        const halfX = plot.side % 2 === 0 ? PLOT_WIDTH / 2 : PLOT_DEPTH / 2;
+        const halfZ = plot.side % 2 === 0 ? PLOT_DEPTH / 2 : PLOT_WIDTH / 2;
+        expect(Math.abs(plot.position[0]) + halfX).toBeLessThan(
+          metrics.lawnHalf,
+        );
+        expect(Math.abs(plot.position[1]) + halfZ).toBeLessThan(
+          metrics.lawnHalf,
+        );
+      }
+      for (let i = 0; i < plots.length; i++) {
+        for (let j = i + 1; j < plots.length; j++) {
+          const a = plots[i];
+          const b = plots[j];
+          const aHalfX = a.side % 2 === 0 ? PLOT_WIDTH / 2 : PLOT_DEPTH / 2;
+          const aHalfZ = a.side % 2 === 0 ? PLOT_DEPTH / 2 : PLOT_WIDTH / 2;
+          const bHalfX = b.side % 2 === 0 ? PLOT_WIDTH / 2 : PLOT_DEPTH / 2;
+          const bHalfZ = b.side % 2 === 0 ? PLOT_DEPTH / 2 : PLOT_WIDTH / 2;
+          const sepX =
+            Math.abs(a.position[0] - b.position[0]) >= aHalfX + bHalfX;
+          const sepZ =
+            Math.abs(a.position[1] - b.position[1]) >= aHalfZ + bHalfZ;
+          expect(
+            sepX || sepZ,
+            `overlap plots ${a.tile} & ${b.tile} @ extra=${extra}`,
+          ).toBe(true);
+        }
+      }
     }
   });
 });

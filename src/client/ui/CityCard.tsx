@@ -12,7 +12,6 @@ import {
   startLandingSalary,
 } from "../../shared/board/index.js";
 import {
-  boardRule,
   buyoutPrice,
   economyRule,
   getProperty,
@@ -288,7 +287,7 @@ function CityDeed({
   const boost = rentBoost(state, index);
   const buyout = buyoutPrice(state, index);
   const rule = economyRule(state.config);
-  const board = boardRule(state.config);
+  const board = state.config;
   const rules = ruleEconomy(rule);
   const items =
     owner === null

@@ -776,6 +776,8 @@ export class GameRoom extends DurableObject<Env> {
       config: {
         ...room.config,
         botDifficulty: room.config.botDifficulty ?? "medium",
+        mapId: room.config.mapId ?? "world",
+        mapExtraLocations: room.config.mapExtraLocations ?? 0,
       },
       ...frozenRules(this.readMeta<number>("rulesVersion")),
       seats: SEATS.map((seat) => {

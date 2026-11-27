@@ -1,4 +1,5 @@
 export {
+  getBoardSize,
   getTileBaseRent,
   getTileBuildCost,
   getTileInvestedValue,

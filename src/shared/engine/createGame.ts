@@ -9,7 +9,6 @@ import type {
   WorldTourRule,
 } from "../board/index.js";
 import {
-  BOARD_SIZE,
   BOT_TIMING,
   CHANCE_AMOUNTS,
   CHANCE_DECK_COPIES,
@@ -17,6 +16,8 @@ import {
   DECISION_TIMING,
   ECONOMY,
   getBoard,
+  getBoardSize,
+  getCornerTileIndex,
   getCountryCityTiles,
   getResortRent,
   getTile,
@@ -25,6 +26,9 @@ import {
   getTileLandPrice,
   isCityTile,
   isResortTile,
+  MAP_IDS,
+  MAX_EXTRA_LOCATIONS,
+  MIN_EXTRA_LOCATIONS,
   PAUSE_TIMING,
   ruleEconomy,
   startLandingSalary,
@@ -73,6 +77,8 @@ export const DEFAULT_GAME_CONFIG = {
   hotelPurchaseRule: "staged-hotels",
   economyRule: "reference",
   boardRule: "country",
+  mapId: "world",
+  mapExtraLocations: 0,
   worldTourRule: "free-and-own",
   fourResortRent: true,
   buildAfterBuyout: true,
@@ -195,7 +201,7 @@ export function propertyInvestedValue(
       tileIndex,
       getProperty(state, tileIndex)?.level ?? 0,
       economyRule(state.config),
-      boardRule(state.config),
+      state.config,
     );
   if (tile && isResortTile(tile)) return ECONOMY.resortPrice;
   return 0;
@@ -222,8 +228,10 @@ function ownsCountry(
   seat: Seat,
   country: (typeof COUNTRY_IDS)[number],
 ): boolean {
-  return getCountryCityTiles(country, state.config).every(
-    (tile) => propertyOwner(state, tile.index) === seat,
+  const tiles = getCountryCityTiles(country, state.config);
+  return (
+    tiles.length > 0 &&
+    tiles.every((tile) => propertyOwner(state, tile.index) === seat)
   );
 }
 /**
@@ -266,12 +274,7 @@ export function propertyRent(state: PublicState, tileIndex: number): number {
   }
   if (!tile || !isCityTile(tile) || !property) return 0;
   if (powerCutActive(state, property)) return 0;
-  const rent = getTileBaseRent(
-    tileIndex,
-    property.level,
-    rule,
-    boardRule(state.config),
-  );
+  const rent = getTileBaseRent(tileIndex, property.level, rule, state.config);
   if (property.level === 5) return rent;
   const country =
     property.owner !== null && ownsCountry(state, property.owner, tile.country)
@@ -431,7 +434,7 @@ function purchaseCost(
         tileIndex,
         level,
         economyRule(state.config),
-        boardRule(state.config),
+        state.config,
       )
     : ECONOMY.resortPrice;
 }
@@ -452,7 +455,7 @@ export function buyoutPriceAt(
       tileIndex,
       level,
       economyRule(state.config),
-      boardRule(state.config),
+      state.config,
     ) * ECONOMY.buyoutMultiplier
   );
 }
@@ -503,8 +506,8 @@ export function worldTourTargets(state: PublicState, seat: Seat): number[] {
   return free.length > 0 ? free : owned(seat);
 }
 /** Tiles from one space to another going clockwise; the same space is a lap. */
-function clockwiseSteps(from: number, to: number): number {
-  return (to - from + BOARD_SIZE) % BOARD_SIZE || BOARD_SIZE;
+function clockwiseSteps(from: number, to: number, boardSize: number): number {
+  return (to - from + boardSize) % boardSize || boardSize;
 }
 /** The Start salary a flight to this tile collects on its clockwise route. */
 export function travelSalary(
@@ -513,7 +516,8 @@ export function travelSalary(
   tile: number,
 ): number {
   const position = getPlayer(state, seat).position;
-  return position + clockwiseSteps(position, tile) >= BOARD_SIZE
+  const boardSize = getBoardSize(state.config);
+  return position + clockwiseSteps(position, tile, boardSize) >= boardSize
     ? state.config.startSalary
     : 0;
 }
@@ -1013,9 +1017,10 @@ function resolver(
   };
   const move = (seat: Seat, steps: number) => {
     const player = getPlayer(state, seat);
+    const boardSize = getBoardSize(state.config);
     const absolute = player.position + steps;
-    const crossings = steps > 0 ? Math.floor(absolute / BOARD_SIZE) : 0;
-    const position = ((absolute % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE;
+    const crossings = steps > 0 ? Math.floor(absolute / boardSize) : 0;
+    const position = ((absolute % boardSize) + boardSize) % boardSize;
     emit({
       type: "PlayerMoved",
       seat,
@@ -1041,7 +1046,14 @@ function resolver(
     }
   };
   const moveTo = (seat: Seat, target: number) => {
-    move(seat, clockwiseSteps(getPlayer(state, seat).position, target));
+    move(
+      seat,
+      clockwiseSteps(
+        getPlayer(state, seat).position,
+        target,
+        getBoardSize(state.config),
+      ),
+    );
   };
   const roll = (seat: Seat) => {
     const player = getPlayer(state, seat);
@@ -1168,10 +1180,10 @@ function resolver(
         secrets({ turnEnded: true, extraRoll: false });
         break;
       case "Jet Set":
-        relocate(24);
+        relocate(getCornerTileIndex(state.config, "world-tour"));
         break;
       case "Stadium Call":
-        relocate(16);
+        relocate(getCornerTileIndex(state.config, "championship"));
         break;
       case "Windfall":
         emit({
@@ -1765,11 +1777,7 @@ function resolver(
 function landPrice(state: PublicState, tileIndex: number): number {
   const tile = getTile(tileIndex, state.config);
   return tile && isCityTile(tile)
-    ? getTileLandPrice(
-        tileIndex,
-        economyRule(state.config),
-        boardRule(state.config),
-      )
+    ? getTileLandPrice(tileIndex, economyRule(state.config), state.config)
     : ECONOMY.resortPrice;
 }
 
@@ -2016,14 +2024,8 @@ function nextRentIncrease(state: PublicState, tileIndex: number): number {
         tileIndex,
         (property.level + 1) as BuildLevel,
         rule,
-        boardRule(state.config),
-      ) -
-        getTileBaseRent(
-          tileIndex,
-          property.level,
-          rule,
-          boardRule(state.config),
-        )
+        state.config,
+      ) - getTileBaseRent(tileIndex, property.level, rule, state.config)
     : 0;
 }
 function timeoutAction(state: PublicState): Action {
@@ -2263,6 +2265,7 @@ function botHoldingsValue(state: PublicState, seat: Seat): number {
   const player = getPlayer(state, seat);
   const collections = COUNTRY_IDS.reduce((value, country) => {
     const cities = getCountryCityTiles(country, state.config);
+    if (cities.length === 0) return value;
     const owned = cities.filter(
       (city) => propertyOwner(state, city.index) === seat,
     ).length;
@@ -2350,10 +2353,11 @@ function hardSwapTarget(
 
 function botReserve(state: PublicState, seat: Seat): number {
   const position = getPlayer(state, seat).position;
+  const boardSize = getBoardSize(state.config);
   let exposure = 0;
   for (let first = 1; first <= 6; first++) {
     for (let second = 1; second <= 6; second++) {
-      const tile = (position + first + second) % BOARD_SIZE;
+      const tile = (position + first + second) % boardSize;
       const owner = propertyOwner(state, tile);
       if (owner !== null && owner !== seat)
         exposure += propertyRent(state, tile);
@@ -2596,6 +2600,18 @@ export function createGame(
   )
     throw new RangeError("Unsupported board rule");
   if (
+    config.mapId !== undefined &&
+    !(MAP_IDS as readonly string[]).includes(config.mapId)
+  )
+    throw new RangeError("Unsupported map id");
+  if (
+    config.mapExtraLocations !== undefined &&
+    (!Number.isInteger(config.mapExtraLocations) ||
+      config.mapExtraLocations < MIN_EXTRA_LOCATIONS ||
+      config.mapExtraLocations > MAX_EXTRA_LOCATIONS)
+  )
+    throw new RangeError("Unsupported map location count");
+  if (
     config.worldTourRule !== undefined &&
     !["free-and-own", "free-first"].includes(config.worldTourRule)
   )
@@ -2640,7 +2656,11 @@ export function createGame(
   )
     throw new RangeError("Sell-back percentage must be 50 or 100");
   const economy = ruleEconomy(config.economyRule ?? "reference");
-  const board = getBoard(config.boardRule ?? "country");
+  const board = getBoard({
+    boardRule: config.boardRule ?? "country",
+    mapId: config.mapId,
+    mapExtraLocations: config.mapExtraLocations,
+  });
   if (!Number.isFinite(context.now))
     throw new RangeError("Game time must be finite");
   if (
@@ -2733,6 +2753,8 @@ export function createGame(
       hotelPurchaseRule: config.hotelPurchaseRule ?? "staged-hotels",
       economyRule: config.economyRule ?? "reference",
       boardRule: config.boardRule ?? "country",
+      mapId: config.mapId ?? "world",
+      mapExtraLocations: config.mapExtraLocations ?? 0,
       worldTourRule: config.worldTourRule ?? "free-and-own",
       fourResortRent: config.fourResortRent ?? true,
       buildAfterBuyout: config.buildAfterBuyout ?? true,

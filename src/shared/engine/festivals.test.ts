@@ -110,13 +110,14 @@ describe("initial festival distribution", () => {
   });
   it("applies identical rules after renaming countries, including Portugal", () => {
     const candidates = eligible(configurations[0]);
+    const activeCountries = COUNTRY_IDS.slice(0, 8);
     const renamed = candidates.map((tile) => {
       if (!isCityTile(tile)) return tile;
       return {
         ...tile,
         country:
-          COUNTRY_IDS[
-            (COUNTRY_IDS.indexOf(tile.country) + 2) % COUNTRY_IDS.length
+          activeCountries[
+            (activeCountries.indexOf(tile.country) + 2) % activeCountries.length
           ],
       };
     });

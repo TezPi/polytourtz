@@ -1,7 +1,14 @@
+import {
+  buildCustomBoard,
+  clampExtraLocations,
+  DEFAULT_LOTS_PER_SIDE,
+  resolveMapId,
+} from "./maps.js";
 import type {
   BoardRule,
   CityTile,
   CountryId,
+  MapId,
   ResortTile,
   Tile,
 } from "./types.js";
@@ -81,12 +88,44 @@ export const LEGACY_BOARD: readonly Tile[] = [
   { kind: "city", index: 31, country: "H", city: 2, side: 4 },
 ] satisfies readonly Tile[];
 
-export type BoardSelector = BoardRule | { readonly boardRule?: BoardRule };
+export type BoardSelector =
+  | BoardRule
+  | {
+      readonly boardRule?: BoardRule;
+      readonly mapId?: MapId;
+      readonly mapExtraLocations?: number;
+    };
 /** An absent marker on a config is a production save, not a new board. */
 export function getBoard(selector: BoardSelector = "country"): readonly Tile[] {
-  const rule =
-    typeof selector === "string" ? selector : (selector.boardRule ?? "legacy");
-  return rule === "legacy" ? LEGACY_BOARD : BOARD;
+  if (typeof selector === "string") {
+    return selector === "legacy" ? LEGACY_BOARD : BOARD;
+  }
+  const mapId = resolveMapId(selector.mapId);
+  const extra = clampExtraLocations(selector.mapExtraLocations);
+  if (mapId === "world" && extra === 0) {
+    return (selector.boardRule ?? "legacy") === "legacy" ? LEGACY_BOARD : BOARD;
+  }
+  return buildCustomBoard(mapId, extra);
+}
+
+export function getBoardSize(selector: BoardSelector = "country"): number {
+  return getBoard(selector).length;
+}
+
+export function getBoardLotsPerSide(
+  selector: BoardSelector = "country",
+): number {
+  const size = getBoardSize(selector);
+  return size >= 8 ? size / 4 - 1 : DEFAULT_LOTS_PER_SIDE;
+}
+
+export function getCornerTileIndex(
+  selector: BoardSelector,
+  kind: "start" | "island" | "championship" | "world-tour",
+): number {
+  const tile = getBoard(selector).find((candidate) => candidate.kind === kind);
+  if (!tile) throw new Error(`The board has no ${kind} tile`);
+  return tile.index;
 }
 
 function findTileIndex(kind: Tile["kind"]): number {

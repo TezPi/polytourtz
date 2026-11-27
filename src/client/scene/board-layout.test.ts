@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, BOARD_SIZE } from "../../shared/board/index.js";
+import {
+  BOARD,
+  BOARD_SIZE,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
 import type { Seat } from "../../shared/engine/index.js";
 import {
   BOARD_HALF,
   BUILDING_BAND,
+  boardHalfFor,
   buildingBandZ,
   faceRotation,
   INNER_HALF,
+  innerHalfFor,
   LOT_DEPTH,
   LOT_TOP,
   PRICE_BAND,
@@ -258,6 +265,34 @@ describe("board layout", () => {
       const [sx, sy] = screenPoint(x, 0, z);
       expect(Math.sign(sx)).toBe(expected[seat][0]);
       expect(Math.sign(sy)).toBe(expected[seat][1]);
+    }
+  });
+
+  it("keeps corner transitions and tile areas exact across smaller and expanded custom map sizes", () => {
+    for (const extra of [-8, 10, 15, 20, 24]) {
+      const cfg = {
+        boardRule: "country" as const,
+        mapId: "usa" as const,
+        mapExtraLocations: extra,
+      };
+      const board = getBoard(cfg);
+      const lps = getBoardLotsPerSide(cfg);
+      const boardHalf = boardHalfFor(lps);
+      const innerHalf = innerHalfFor(lps);
+      let area = 0;
+      for (const tile of board) {
+        const [x, z] = tileCenter(tile.index, lps);
+        const [along, depth] = tileSize(tile.index, lps);
+        area += along * depth;
+        const horizontal = tileRotation(tile.index, lps) % Math.PI === 0;
+        const halfX = (horizontal ? along : depth) / 2;
+        const halfZ = (horizontal ? depth : along) / 2;
+        expect(x - halfX).toBeGreaterThanOrEqual(-boardHalf - 1e-9);
+        expect(x + halfX).toBeLessThanOrEqual(boardHalf + 1e-9);
+        expect(z - halfZ).toBeGreaterThanOrEqual(-boardHalf - 1e-9);
+        expect(z + halfZ).toBeLessThanOrEqual(boardHalf + 1e-9);
+      }
+      expect(area).toBeCloseTo(4 * boardHalf ** 2 - 4 * innerHalf ** 2, 9);
     }
   });
 });

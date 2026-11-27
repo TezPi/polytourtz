@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_BOARD_SIZE } from "../../shared/board/index.js";
 import type { GameEvent, PublicState } from "../../shared/engine/index.js";
 import type { ServerMessage } from "../../shared/protocol/index.js";
 import {
@@ -15,7 +16,11 @@ const seat = z.union([
   z.literal(4),
 ]);
 const botDifficulty = z.enum(["easy", "medium", "hard"]);
-const tile = z.number().int().min(0).max(31);
+const tile = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_BOARD_SIZE - 1);
 const integer = z.number().int();
 const pause = z
   .discriminatedUnion("kind", [

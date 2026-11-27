@@ -1,37 +1,36 @@
 import * as THREE from "three";
-import { type BoardRule, ECONOMY, getBoard } from "../../shared/board/index.js";
+import {
+  type BoardSelector,
+  COUNTRY_IDS,
+  ECONOMY,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
 import type { KeepCard, Seat } from "../../shared/engine/index.js";
 import type { Locale } from "../i18n.js";
 import { PLAYER_COLORS, tileColor, tileName } from "../ui/board-display.js";
 import {
   BUILDING_BAND,
-  INNER_HALF,
-  LAWN_HALF,
+  innerHalfFor,
   LOT_DEPTH,
   LOT_WIDTH,
+  LOTS_PER_SIDE,
+  lawnHalfFor,
   PRICE_BAND,
   ROAD_WIDTH,
   START_BANK_PRINT,
   screenTop,
+  sideFrame,
 } from "./board-layout.js";
 import {
   AVENUE_HALF_WIDTH,
-  AVENUE_START,
   avenuePoint,
-  CAROUSEL,
   cornerDirection,
-  FERRIS_WHEEL,
-  HELIPAD,
   lawnPoint,
-  PLAZA_RADIUS,
   PLOT_DEPTH,
-  PLOT_INSET,
   PLOT_WIDTH,
-  POND,
-  RING_HALF_WIDTH,
-  RING_RADIUS,
-  TURNING_CIRCLE,
   TURNING_CIRCLE_PAVED,
+  townMetrics,
   townPlots,
 } from "./town-layout.js";
 
@@ -603,20 +602,21 @@ function paintGround(
   width: number,
   height: number,
   band: number,
-  boardRule: BoardRule,
+  selector: BoardSelector,
 ) {
-  const tile = getBoard(boardRule)[index];
-  if (tile.kind === "city") {
-    COUNTRY_PAVEMENTS["ABCDEFGH".indexOf(tile.country)](
+  const tile = getBoard(selector)[index];
+  if (tile?.kind === "city") {
+    const groupIdx = Math.max(0, COUNTRY_IDS.indexOf(tile.country));
+    COUNTRY_PAVEMENTS[groupIdx % COUNTRY_PAVEMENTS.length](
       context,
-      tileColor(index, { boardRule }),
+      tileColor(index, selector),
       width,
       height,
       noise(index + 1),
     );
     return;
   }
-  if (tile.kind === "tax") {
+  if (tile?.kind === "tax") {
     paintConcrete(context, index, width, height);
     taxForm(context, width / 2, band * 0.52, band * 0.92);
   }
@@ -629,7 +629,7 @@ export type LotPrint = {
   readonly locale: Locale;
   /** Eligible sale lots print their strip white, in the owner's ink. */
   readonly forSale?: boolean;
-  readonly boardRule?: BoardRule;
+  readonly boardRule?: BoardSelector;
 };
 
 export function lotTexture(index: number, print: LotPrint) {
@@ -641,8 +641,8 @@ export function lotTexture(index: number, print: LotPrint) {
   const { amount, owner, locale, forSale, boardRule = "country" } = print;
   return canvasTexture(width, height, (context) => {
     const tile = getBoard(boardRule)[index];
-    const name = tileName(index, { boardRule }).toLocaleUpperCase(locale);
-    if (tile.kind === "chance") {
+    const name = tileName(index, boardRule).toLocaleUpperCase(locale);
+    if (tile?.kind === "chance") {
       paintConcrete(context, index, width, height);
       wheel(context, width / 2, height * 0.38, width * 0.36);
       context.fillStyle = INK;
@@ -660,7 +660,7 @@ export function lotTexture(index: number, print: LotPrint) {
     }
     // Beaches are one piece of sand; every other lot has a city ground with
     // its buildings and name, then a separate concrete price strip.
-    const beach = tile.kind === "resort";
+    const beach = tile?.kind === "resort";
     if (beach) paintBeach(context, index, width, height, band);
     else paintGround(context, index, width, ground, band, boardRule);
     context.fillStyle = INK;
@@ -694,7 +694,7 @@ export function lotTexture(index: number, print: LotPrint) {
     }
     // The purchase price in ink, or the rent in the owner's color.
     const figure =
-      tile.kind === "tax"
+      tile?.kind === "tax"
         ? `${ECONOMY.taxPercent} %`
         : amount === null
           ? ""
@@ -787,15 +787,16 @@ function drawBank(
 export function cornerTexture(
   index: number,
   locale: Locale,
-  salary: number,
-  boardRule: BoardRule = "country",
+  salary: number | null,
+  boardRule: BoardSelector = "country",
 ) {
+  const lotsPerSide = getBoardLotsPerSide(boardRule);
   const size = Math.round(LOT_DEPTH * PIXELS_PER_UNIT);
   // Front corners show their inner quarter top-left, back corners bottom-right.
-  const front = screenTop(index) === 1;
+  const front = screenTop(index, lotsPerSide) === 1;
   const outer = front ? size * 0.66 : size * 0.34;
   return canvasTexture(size, size, (context) => {
-    const kind = getBoard(boardRule)[index].kind;
+    const kind = getBoard(boardRule)[index]?.kind;
     if (kind === "start") {
       context.fillStyle = PAPER;
       context.fillRect(0, 0, size, size);
@@ -824,7 +825,7 @@ export function cornerTexture(
       context.fillStyle = "#fffaf0";
       fitText(
         context,
-        tileName(index, { boardRule }).toLocaleUpperCase(locale),
+        tileName(index, boardRule).toLocaleUpperCase(locale),
         size * 0.65,
         y + 2,
         size * 0.56,
@@ -838,18 +839,20 @@ export function cornerTexture(
         size * START_BANK_PRINT[1],
         size * 0.36,
       );
-      // The salary is printed just below the bank it comes from.
-      context.fillStyle = "#2f8a4c";
-      fitText(
-        context,
-        `+${boardAmount(salary, locale)}`,
-        size * 0.74,
-        size * 0.5,
-        size * 0.44,
-        52,
-        900,
-        DISPLAY_FONT,
-      );
+      if (salary !== null) {
+        // The salary is printed just below the bank it comes from.
+        context.fillStyle = "#2f8a4c";
+        fitText(
+          context,
+          `+${boardAmount(salary, locale)}`,
+          size * 0.74,
+          size * 0.5,
+          size * 0.44,
+          52,
+          900,
+          DISPLAY_FONT,
+        );
+      }
       return;
     }
     if (kind === "island") {
@@ -965,10 +968,13 @@ export function cornerTexture(
  * mown park, a paved plaza for the dice, the roundabout and its avenues, and
  * one street of plots per side, each edged in its city's country color.
  */
-export function lawnTexture(boardRule: BoardRule = "country") {
-  const plots = townPlots(boardRule);
-  const size = 1536;
-  const unit = size / (LAWN_HALF * 2);
+export function lawnTexture(boardSelector: BoardSelector = "country") {
+  const lotsPerSide = getBoardLotsPerSide(boardSelector);
+  const metrics = townMetrics(lotsPerSide);
+  const plots = townPlots(boardSelector);
+  const lawnHalf = lawnHalfFor(lotsPerSide);
+  const size = lotsPerSide > 9 ? 2048 : 1536;
+  const unit = size / (lawnHalf * 2);
   return canvasTexture(size, size, (context) => {
     context.fillStyle = "#9fcb59";
     context.fillRect(0, 0, size, size);
@@ -999,7 +1005,7 @@ export function lawnTexture(boardRule: BoardRule = "country") {
       halfWidth: number,
       fill: string,
     ) => {
-      const [x, z] = cornerDirection(corner);
+      const [x, z] = cornerDirection(corner, lotsPerSide);
       context.save();
       context.rotate(Math.atan2(z, x));
       context.fillStyle = fill;
@@ -1010,8 +1016,13 @@ export function lawnTexture(boardRule: BoardRule = "country") {
     for (let side = 0; side < 4; side++) {
       // A seven-property street has a middle plot instead of a footpath gap.
       if (plots.filter((plot) => plot.side === side).length % 2 !== 0) continue;
-      const [ax, az] = lawnPoint(side, 0, 0);
-      const [bx, bz] = lawnPoint(side, 0, LAWN_HALF - RING_RADIUS);
+      const [ax, az] = lawnPoint(side, 0, 0, lotsPerSide);
+      const [bx, bz] = lawnPoint(
+        side,
+        0,
+        lawnHalf - metrics.ringRadius,
+        lotsPerSide,
+      );
       context.strokeStyle = "#eee6d4";
       context.lineWidth = 0.09;
       context.beginPath();
@@ -1020,62 +1031,84 @@ export function lawnTexture(boardRule: BoardRule = "country") {
       context.stroke();
     }
     // Avenues with pale sidewalks and a dashed center line.
+    const avenueInner = Math.max(0.5, metrics.ringRadius - 0.18);
     for (let corner = 0; corner < 4; corner++) {
-      avenue(corner, 1.3, TURNING_CIRCLE, AVENUE_HALF_WIDTH + 0.05, "#ece4d2");
-      avenue(corner, 1.3, TURNING_CIRCLE, AVENUE_HALF_WIDTH, "#88939b");
+      avenue(
+        corner,
+        avenueInner,
+        metrics.turningCircle,
+        AVENUE_HALF_WIDTH + 0.05,
+        "#ece4d2",
+      );
+      avenue(
+        corner,
+        avenueInner,
+        metrics.turningCircle,
+        AVENUE_HALF_WIDTH,
+        "#88939b",
+      );
       disc(
-        ...avenuePoint(corner, TURNING_CIRCLE, 0),
+        ...avenuePoint(corner, metrics.turningCircle, 0, lotsPerSide),
         TURNING_CIRCLE_PAVED + 0.05,
         "#ece4d2",
       );
       disc(
-        ...avenuePoint(corner, TURNING_CIRCLE, 0),
+        ...avenuePoint(corner, metrics.turningCircle, 0, lotsPerSide),
         TURNING_CIRCLE_PAVED,
         "#88939b",
       );
-      disc(...avenuePoint(corner, TURNING_CIRCLE, 0), 0.1, "#d9ceb6");
-      const [x, z] = cornerDirection(corner);
+      disc(
+        ...avenuePoint(corner, metrics.turningCircle, 0, lotsPerSide),
+        0.1,
+        "#d9ceb6",
+      );
+      const [x, z] = cornerDirection(corner, lotsPerSide);
       context.save();
       context.rotate(Math.atan2(z, x));
       context.strokeStyle = ROAD_PAINT;
       context.lineWidth = 0.012;
       context.setLineDash([0.07, 0.06]);
       context.beginPath();
-      context.moveTo(AVENUE_START + 0.05, 0);
-      context.lineTo(TURNING_CIRCLE - TURNING_CIRCLE_PAVED, 0);
+      context.moveTo(metrics.avenueStart + 0.05, 0);
+      context.lineTo(metrics.turningCircle - TURNING_CIRCLE_PAVED, 0);
       context.stroke();
       context.setLineDash([]);
       context.restore();
     }
     // The roundabout, then the plaza where the dice land.
-    disc(0, 0, RING_RADIUS + RING_HALF_WIDTH + 0.05, "#ece4d2");
-    disc(0, 0, RING_RADIUS + RING_HALF_WIDTH, "#88939b");
+    disc(0, 0, metrics.ringRadius + metrics.ringHalfWidth + 0.05, "#ece4d2");
+    disc(0, 0, metrics.ringRadius + metrics.ringHalfWidth, "#88939b");
     context.setLineDash([0.07, 0.06]);
-    ring(RING_RADIUS, 0.012, ROAD_PAINT);
+    ring(metrics.ringRadius, 0.012, ROAD_PAINT);
     context.setLineDash([]);
-    disc(0, 0, PLAZA_RADIUS, "#efe5cf");
-    ring(PLAZA_RADIUS - 0.03, 0.035, "#dccdb0");
-    ring(1.0, 0.018, "#e3d6bc");
-    ring(0.55, 0.018, "#e3d6bc");
+    const plazaScale = metrics.plazaRadius / 1.34;
+    disc(0, 0, metrics.plazaRadius, "#efe5cf");
+    ring(
+      metrics.plazaRadius - 0.03 * plazaScale,
+      0.035 * plazaScale,
+      "#dccdb0",
+    );
+    ring(1.0 * plazaScale, 0.018 * plazaScale, "#e3d6bc");
+    ring(0.55 * plazaScale, 0.018 * plazaScale, "#e3d6bc");
     // A faint compass rose, low contrast so the dice stay the subject.
     context.fillStyle = "#e6d8bd";
     for (let point = 0; point < 8; point++) {
       const angle = (point * Math.PI) / 4;
-      const length = point % 2 ? 0.42 : 0.9;
+      const length = (point % 2 ? 0.42 : 0.9) * plazaScale;
       context.beginPath();
       context.moveTo(Math.cos(angle) * length, Math.sin(angle) * length);
       context.lineTo(
-        Math.cos(angle + 0.32) * 0.16,
-        Math.sin(angle + 0.32) * 0.16,
+        Math.cos(angle + 0.32) * 0.16 * plazaScale,
+        Math.sin(angle + 0.32) * 0.16 * plazaScale,
       );
       context.lineTo(
-        Math.cos(angle - 0.32) * 0.16,
-        Math.sin(angle - 0.32) * 0.16,
+        Math.cos(angle - 0.32) * 0.16 * plazaScale,
+        Math.sin(angle - 0.32) * 0.16 * plazaScale,
       );
       context.closePath();
       context.fill();
     }
-    disc(0, 0, 0.12, "#e3d6bc");
+    disc(0, 0, 0.12 * plazaScale, "#e3d6bc");
     // One paved street of plots facing each side.
     const rounded = (
       x: number,
@@ -1088,9 +1121,18 @@ export function lawnTexture(boardRule: BoardRule = "country") {
       context.roundRect(x - halfX, z - halfZ, halfX * 2, halfZ * 2, radius);
     };
     for (let side = 0; side < 4; side++) {
-      const [x, z] = lawnPoint(side, 0, PLOT_INSET);
+      const sidePlots = plots.filter((plot) => plot.side === side);
+      if (sidePlots.length === 0) continue;
+      const { along } = sideFrame(side);
+      const maxExtent = sidePlots.reduce((best, plot) => {
+        const extent = Math.abs(
+          plot.position[0] * along[0] + plot.position[1] * along[1],
+        );
+        return Math.max(best, extent);
+      }, 0);
+      const [x, z] = lawnPoint(side, 0, metrics.plotInset, lotsPerSide);
       const alongX = side % 2 === 0;
-      const halfAlong = 1.38;
+      const halfAlong = Math.max(1.0, maxExtent + PLOT_WIDTH / 2 + 0.08);
       const halfDepth = PLOT_DEPTH / 2 + 0.07;
       rounded(
         x,
@@ -1115,48 +1157,66 @@ export function lawnTexture(boardRule: BoardRule = "country") {
       );
       context.fillStyle = "#f7f1e3";
       context.fill();
-      context.strokeStyle = tileColor(plot.tile, { boardRule });
+      context.strokeStyle = tileColor(plot.tile, boardSelector);
       context.lineWidth = 0.03;
       context.stroke();
     }
     // Fairground, pond and helipad.
-    disc(...FERRIS_WHEEL.position, 0.3, "#eedfbd");
-    disc(...CAROUSEL.position, 0.27, "#eedfbd");
-    disc(...POND.position, POND.radius - 0.01, "#e5d7b8");
-    disc(...POND.position, POND.radius - 0.04, "#62c3dc");
-    context.strokeStyle = "#9fe0ef";
-    context.lineWidth = 0.012;
-    for (const radius of [0.09, 0.17]) {
-      context.beginPath();
-      context.arc(...POND.position, radius, 0.4, 1.6);
-      context.stroke();
+    if (metrics.ferrisWheel)
+      disc(...metrics.ferrisWheel.position, 0.3, "#eedfbd");
+    if (metrics.carousel) disc(...metrics.carousel.position, 0.27, "#eedfbd");
+    if (metrics.pond) {
+      disc(...metrics.pond.position, metrics.pond.radius - 0.01, "#e5d7b8");
+      disc(...metrics.pond.position, metrics.pond.radius - 0.04, "#62c3dc");
+      context.strokeStyle = "#9fe0ef";
+      context.lineWidth = 0.012;
+      for (const radius of [0.09, 0.17]) {
+        context.beginPath();
+        context.arc(...metrics.pond.position, radius, 0.4, 1.6);
+        context.stroke();
+      }
     }
-    disc(...HELIPAD.position, HELIPAD.radius - 0.02, "#8e999f");
-    context.strokeStyle = "#fffaf0";
-    context.lineWidth = 0.018;
-    context.beginPath();
-    context.arc(...HELIPAD.position, HELIPAD.radius - 0.06, 0, Math.PI * 2);
-    context.stroke();
-    context.save();
-    context.translate(...HELIPAD.position);
-    context.rotate(Math.PI / 4);
-    context.fillStyle = "#fffaf0";
-    context.fillRect(-0.06, -0.07, 0.025, 0.14);
-    context.fillRect(0.035, -0.07, 0.025, 0.14);
-    context.fillRect(-0.06, -0.0125, 0.12, 0.025);
-    context.restore();
+    if (metrics.helipad) {
+      disc(
+        ...metrics.helipad.position,
+        metrics.helipad.radius - 0.02,
+        "#8e999f",
+      );
+      context.strokeStyle = "#fffaf0";
+      context.lineWidth = 0.018;
+      context.beginPath();
+      context.arc(
+        ...metrics.helipad.position,
+        metrics.helipad.radius - 0.06,
+        0,
+        Math.PI * 2,
+      );
+      context.stroke();
+      context.save();
+      context.translate(...metrics.helipad.position);
+      context.rotate(Math.PI / 4);
+      context.fillStyle = "#fffaf0";
+      context.fillRect(-0.06, -0.07, 0.025, 0.14);
+      context.fillRect(0.035, -0.07, 0.025, 0.14);
+      context.fillRect(-0.06, -0.0125, 0.12, 0.025);
+      context.restore();
+    }
     // Flower beds at the inner corners of the plot streets.
     const flowers = ["#f2a5b8", "#ffd166", "#fffaf0", "#f59f7a"];
-    for (let corner = 0; corner < 4; corner++)
-      for (const across of [-1, 1])
-        for (let petal = 0; petal < 7; petal++) {
-          const [x, z] = avenuePoint(
-            corner,
-            1.78 + (petal % 3) * 0.05,
-            across * (0.24 + Math.floor(petal / 3) * 0.045),
-          );
-          disc(x, z, 0.022, flowers[(petal + corner) % flowers.length]);
-        }
+    const flowerBase = metrics.avenueStart + 0.16;
+    if (flowerBase + 0.15 < metrics.turningCircle - TURNING_CIRCLE_PAVED) {
+      for (let corner = 0; corner < 4; corner++)
+        for (const across of [-1, 1])
+          for (let petal = 0; petal < 7; petal++) {
+            const [x, z] = avenuePoint(
+              corner,
+              flowerBase + (petal % 3) * 0.05,
+              across * (0.24 + Math.floor(petal / 3) * 0.045),
+              lotsPerSide,
+            );
+            disc(x, z, 0.022, flowers[(petal + corner) % flowers.length]);
+          }
+    }
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.strokeStyle = "#5f8f3a40";
     context.lineWidth = 14;
@@ -1165,9 +1225,9 @@ export function lawnTexture(boardRule: BoardRule = "country") {
 }
 
 /** Asphalt ring with curbs and a dashed center line; the lawn covers its middle. */
-export function roadTexture() {
-  const size = 1024;
-  const unit = size / (INNER_HALF * 2);
+export function roadTexture(lotsPerSide = LOTS_PER_SIDE) {
+  const size = lotsPerSide > 9 ? 1536 : 1024;
+  const unit = size / (innerHalfFor(lotsPerSide) * 2);
   const road = ROAD_WIDTH * unit;
   return canvasTexture(size, size, (context) => {
     context.fillStyle = ASPHALT;

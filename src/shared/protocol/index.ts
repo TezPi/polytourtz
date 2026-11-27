@@ -1,9 +1,13 @@
 import { z } from "zod";
-import type {
-  BoardRule,
-  ChanceRule,
-  EconomyRule,
-  WorldTourRule,
+import {
+  type BoardRule,
+  type ChanceRule,
+  type EconomyRule,
+  MAP_IDS,
+  MAX_BOARD_SIZE,
+  MAX_EXTRA_LOCATIONS,
+  MIN_EXTRA_LOCATIONS,
+  type WorldTourRule,
 } from "../board/index.js";
 import {
   type Action,
@@ -46,6 +50,13 @@ export const RoomConfigSchema = z
     giftCanBankrupt: z.boolean().default(true),
     decisionSeconds: z.number().int().min(10).max(60).default(30),
     randomnessMode: z.enum(["secure", "drand"]).default("secure"),
+    mapId: z.enum(MAP_IDS).default("world"),
+    mapExtraLocations: z
+      .number()
+      .int()
+      .min(MIN_EXTRA_LOCATIONS)
+      .max(MAX_EXTRA_LOCATIONS)
+      .default(0),
   })
   .strict();
 export type RoomConfig = z.infer<typeof RoomConfigSchema>;
@@ -83,7 +94,11 @@ const seat = z.union([
 ]);
 /** A waiting member's public id: random, and never a capability. */
 export const MemberIdSchema = z.string().regex(/^[a-f0-9]{16}$/);
-const tile = z.number().int().min(0).max(31);
+const tile = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_BOARD_SIZE - 1);
 const level = z.number().int().min(0).max(5);
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("RequestPause") }).strict(),

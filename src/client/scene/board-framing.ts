@@ -1,15 +1,15 @@
 import * as THREE from "three";
-import { BOARD_SIZE } from "../../shared/board/index.js";
 import { BOARD_ZOOM } from "../board-view.js";
 import {
   BOARD_BOTTOM,
-  BOARD_HALF,
+  boardHalfFor,
   CAMERA_OFFSET,
   isCorner,
   LOT_TOP,
+  LOTS_PER_SIDE,
   tileCenter,
 } from "./board-layout.js";
-import { LANDMARK_PEAKS } from "./Landmarks.js";
+import { landmarkPeaks } from "./Landmarks.js";
 
 export type BoardOrientation = { yaw: number; pitch: number };
 export const DEFAULT_BOARD_ORIENTATION: BoardOrientation = { yaw: 0, pitch: 0 };
@@ -67,6 +67,7 @@ export function boardScreenHit(
   x: number,
   y: number,
   rotation: THREE.Quaternion,
+  lotsPerSide = LOTS_PER_SIDE,
 ): boolean {
   if (!width || !height) return false;
   const raycaster = new THREE.Raycaster();
@@ -78,7 +79,7 @@ export function boardScreenHit(
     .makeRotationFromQuaternion(rotation)
     .invert();
   const localRay = raycaster.ray.clone().applyMatrix4(inverse);
-  const edge = BOARD_HALF + 0.08;
+  const edge = boardHalfFor(lotsPerSide) + 0.08;
   const box = new THREE.Box3(
     new THREE.Vector3(-edge, BOARD_BOTTOM, -edge),
     new THREE.Vector3(edge, LOT_TOP, edge),
@@ -112,6 +113,7 @@ export function frameBoard(
   requestedPan: BoardPan = CENTERED_BOARD,
   ui = 1,
   rotation = new THREE.Quaternion(),
+  lotsPerSide = LOTS_PER_SIDE,
 ) {
   const zoom = Number.isFinite(requestedZoom)
     ? THREE.MathUtils.clamp(requestedZoom, BOARD_ZOOM.min, BOARD_ZOOM.max)
@@ -138,17 +140,18 @@ export function frameBoard(
         .applyMatrix4(camera.matrixWorldInverse),
     );
   };
-  const edge = BOARD_HALF + 0.08;
+  const edge = boardHalfFor(lotsPerSide) + 0.08;
+  const boardSize = (lotsPerSide + 1) * 4;
   for (const x of [-edge, edge])
     for (const z of [-edge, edge]) {
       add(x, BOARD_BOTTOM, z);
       add(x, LOT_TOP, z);
     }
-  for (let tile = 0; tile < BOARD_SIZE; tile++) {
-    const [x, z] = tileCenter(tile);
-    add(x, LOT_TOP + (isCorner(tile) ? 0.95 : 0.8), z);
+  for (let tile = 0; tile < boardSize; tile++) {
+    const [x, z] = tileCenter(tile, lotsPerSide);
+    add(x, LOT_TOP + (isCorner(tile, lotsPerSide) ? 0.95 : 0.8), z);
   }
-  for (const [x, y, z] of LANDMARK_PEAKS) add(x, y, z);
+  for (const [x, y, z] of landmarkPeaks(lotsPerSide)) add(x, y, z);
   const availableWidth = Math.max(1, width - insets.side * 2);
   const availableHeight = Math.max(1, height - insets.top - insets.bottom);
   // Orbit changes foreshortening, never the player's projection scale.

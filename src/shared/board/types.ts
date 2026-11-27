@@ -1,4 +1,20 @@
-export const COUNTRY_IDS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
+export const COUNTRY_IDS = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+] as const;
+
+export const MAP_IDS = ["world", "usa", "vietnam", "japan"] as const;
+export type MapId = (typeof MAP_IDS)[number];
 
 export type CountryId = (typeof COUNTRY_IDS)[number];
 export type BoardSide = 1 | 2 | 3 | 4;
@@ -32,7 +48,7 @@ export type CityTile = {
   readonly kind: "city";
   readonly index: number;
   readonly country: CountryId;
-  readonly city: 1 | 2 | 3;
+  readonly city: 1 | 2 | 3 | 4;
   readonly side: BoardSide;
 };
 
@@ -47,11 +63,11 @@ export type Tile =
   | CityTile
   | ResortTile
   | { readonly kind: "start"; readonly index: 0 }
-  | { readonly kind: "island"; readonly index: 8 }
-  | { readonly kind: "championship"; readonly index: 16 }
-  | { readonly kind: "world-tour"; readonly index: 24 }
-  | { readonly kind: "chance"; readonly index: 3 | 12 | 14 | 19 | 20 | 28 }
-  | { readonly kind: "tax"; readonly index: 29 | 30 };
+  | { readonly kind: "island"; readonly index: number }
+  | { readonly kind: "championship"; readonly index: number }
+  | { readonly kind: "world-tour"; readonly index: number }
+  | { readonly kind: "chance"; readonly index: number }
+  | { readonly kind: "tax"; readonly index: number };
 
 export type BuildLevelConfig = {
   readonly level: BuildLevel;

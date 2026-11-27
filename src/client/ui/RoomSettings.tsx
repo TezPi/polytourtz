@@ -1,9 +1,20 @@
 import type { CSSProperties } from "react";
 import { useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  BASE_CITY_COUNT,
+  clampExtraLocations,
+  getBoardSize,
+  getMapDefaultExtraLocations,
+  MAP_IDS,
+  MAX_EXTRA_LOCATIONS,
+  type MapId,
+  MIN_EXTRA_LOCATIONS,
+  resolveMapId,
+} from "../../shared/board/index.js";
 import type { BotDifficulty } from "../../shared/engine/index.js";
 import type { RoomConfig } from "../../shared/protocol/index.js";
 import { useLocale } from "../i18n.js";
-import { money } from "./board-display.js";
+import { mapLabel, money } from "./board-display.js";
 import { botDifficultyName } from "./bot-display.js";
 import "./RoomSettings.css";
 
@@ -284,6 +295,158 @@ function BotDifficultySetting({
   );
 }
 
+function MapSetting({
+  config,
+  onChange,
+  disabled = false,
+  compact = false,
+}: RoomSettingsProps & { compact?: boolean }) {
+  const { t } = useLocale();
+  const id = useId();
+  const mapId: MapId = resolveMapId(config.mapId);
+  const extra = clampExtraLocations(config.mapExtraLocations);
+  const cityCount = BASE_CITY_COUNT + extra;
+  const minCities = BASE_CITY_COUNT + MIN_EXTRA_LOCATIONS;
+  const maxCities = BASE_CITY_COUNT + MAX_EXTRA_LOCATIONS;
+  const defaultExtra = getMapDefaultExtraLocations(mapId);
+  const totalTiles = getBoardSize({
+    boardRule: "country",
+    mapId,
+    mapExtraLocations: extra,
+  });
+  const setExtra = (nextExtra: number) => {
+    if (disabled) return;
+    onChange({
+      ...config,
+      mapId,
+      mapExtraLocations: clampExtraLocations(nextExtra),
+    });
+  };
+  const selectMap = (nextMap: MapId) => {
+    if (disabled) return;
+    onChange({
+      ...config,
+      mapId: nextMap,
+      mapExtraLocations: getMapDefaultExtraLocations(nextMap),
+    });
+  };
+  const signedDelta = extra >= 0 ? `+${extra}` : `${extra}`;
+  return (
+    <fieldset
+      className={`room-setting-choice room-setting-map${compact ? " room-setting-map--compact" : ""}`}
+      aria-labelledby={`${id}-label`}
+    >
+      <legend>
+        <span className="room-setting-label">
+          <span id={`${id}-label`}>
+            {t("Carte du plateau", "Board map", "Bản đồ bàn cờ")}
+          </span>
+        </span>
+      </legend>
+      <div className="room-setting-pills room-setting-map-pills">
+        {MAP_IDS.map((option) => {
+          const presetDelta = getMapDefaultExtraLocations(option);
+          return (
+            <label className="room-setting-pill" key={option}>
+              <input
+                type="radio"
+                name={`${id}-map`}
+                value={option}
+                checked={option === mapId}
+                disabled={disabled}
+                onChange={() => selectMap(option)}
+              />
+              <span>
+                <span>{mapLabel(option)}</span>
+                {presetDelta !== 0 && (
+                  <small className="room-setting-map-tag">+{presetDelta}</small>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="room-setting-locations">
+        <div className="room-setting-heading">
+          <label htmlFor={`${id}-cities`}>
+            {t(
+              "Nombre de villes (personnalisable)",
+              "Cities on map (customizable)",
+              "Số địa điểm (tùy chỉnh tăng/giảm)",
+            )}
+          </label>
+          <output htmlFor={`${id}-cities`}>
+            {cityCount} ({signedDelta}) · {totalTiles}{" "}
+            {t("cases", "tiles", "ô")}
+          </output>
+        </div>
+        <div className="room-setting-stepper">
+          <button
+            type="button"
+            className="room-setting-step-btn"
+            disabled={disabled || extra <= MIN_EXTRA_LOCATIONS}
+            aria-label={t(
+              "Réduire d’une ville",
+              "Decrease locations by 1",
+              "Giảm 1 địa điểm",
+            )}
+            onClick={() => setExtra(extra - 1)}
+          >
+            −
+          </button>
+          <input
+            id={`${id}-cities`}
+            className="room-setting-range"
+            type="range"
+            min={minCities}
+            max={maxCities}
+            step={1}
+            value={cityCount}
+            disabled={disabled}
+            aria-valuetext={`${cityCount} (${signedDelta})`}
+            style={
+              {
+                "--setting-progress": `${((cityCount - minCities) / (maxCities - minCities)) * 100}%`,
+              } as CSSProperties
+            }
+            onChange={(event) => {
+              const targetCities = Number(event.currentTarget.value);
+              setExtra(targetCities - BASE_CITY_COUNT);
+            }}
+          />
+          <button
+            type="button"
+            className="room-setting-step-btn"
+            disabled={disabled || extra >= MAX_EXTRA_LOCATIONS}
+            aria-label={t(
+              "Ajouter une ville",
+              "Increase locations by 1",
+              "Tăng 1 địa điểm",
+            )}
+            onClick={() => setExtra(extra + 1)}
+          >
+            +
+          </button>
+          {extra !== defaultExtra && (
+            <button
+              type="button"
+              className="room-setting-reset-btn"
+              disabled={disabled}
+              onClick={() => setExtra(defaultExtra)}
+            >
+              {t(
+                "Défaut",
+                "Default",
+                `Mặc định (${defaultExtra >= 0 ? `+${defaultExtra}` : defaultExtra})`,
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </fieldset>
+  );
+}
+
 /** Quick economy and bot choices before opening a room. */
 export function QuickSettings({
   config,
@@ -297,6 +460,12 @@ export function QuickSettings({
   return (
     <div className="room-settings">
       <div className="room-settings-main">
+        <MapSetting
+          config={config}
+          onChange={onChange}
+          disabled={disabled}
+          compact
+        />
         <NumberSetting
           label={t("Capital de départ", "Starting cash")}
           value={config.startingCash}
@@ -509,6 +678,7 @@ export function RoomSettings({
       }
     >
       <div className="room-settings-main">
+        <MapSetting config={config} onChange={onChange} disabled={disabled} />
         <NumberSetting
           label={t("Capital de départ", "Starting cash")}
           value={config.startingCash}

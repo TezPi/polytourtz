@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
-  BOARD_SIZE,
-  type BoardRule,
+  type BoardSelector,
   DECISION_TIMING,
   ECONOMY,
   getBoard,
+  getBoardLotsPerSide,
+  MAX_BOARD_SIZE,
 } from "../../shared/board/index.js";
 import type {
   GameConfig,
@@ -37,7 +38,6 @@ import {
   PLAYER_COLORS,
   tileColor,
   tileName,
-  tilePrice,
 } from "../ui/board-display.js";
 import PawnModel from "./PawnModel.js";
 import "./BoardScene.css";
@@ -53,19 +53,20 @@ import {
 } from "./board-framing.js";
 import {
   BOARD_BOTTOM,
-  BOARD_HALF,
   BOARD_TOP,
+  boardHalfFor,
   buildingBandZ,
   CAMERA_OFFSET,
   faceRotation,
-  INNER_HALF,
+  innerHalfFor,
   isCorner,
-  LAWN_HALF,
   LAWN_TOP,
   LOT_DEPTH,
   LOT_GAP,
   LOT_TOP,
   LOT_WIDTH,
+  LOTS_PER_SIDE,
+  lawnHalfFor,
   passingSpot,
   pawnSpot,
   ROAD_TOP,
@@ -173,39 +174,44 @@ const DICE_COLORS = [
   "#2f9b5f",
   "#e59624",
 ] as const;
-const [BANK_X, BANK_Z] = startBankPoint();
-// Bank money leaves and lands just above the bank printed on Start.
-const BANK_POSITION: readonly [number, number, number] = [
-  BANK_X,
-  LOT_TOP + 0.12,
-  BANK_Z,
-];
-
-function pawnPosition(seat: Seat, tile: number): [number, number, number] {
-  const [x, z] = pawnSpot(seat, tile);
-  return [x, (isCorner(tile) ? LOT_TOP : ROAD_TOP) + PAWN_LIFT, z];
+function pawnPosition(
+  seat: Seat,
+  tile: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): [number, number, number] {
+  const [x, z] = pawnSpot(seat, tile, lotsPerSide);
+  return [x, (isCorner(tile, lotsPerSide) ? LOT_TOP : ROAD_TOP) + PAWN_LIFT, z];
 }
 
 /** Where a walking pawn touches down on a tile it passes without stopping. */
-function passingPosition(seat: Seat, tile: number): [number, number, number] {
-  const [x, z] = passingSpot(seat, tile);
+function passingPosition(
+  seat: Seat,
+  tile: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): [number, number, number] {
+  const [x, z] = passingSpot(seat, tile, lotsPerSide);
   return [x, ROAD_TOP + PAWN_LIFT, z];
 }
 
 function BoardBase({
   onRendered,
-  boardRule,
+  selector,
+  lotsPerSide,
 }: {
   onRendered: () => void;
-  boardRule: BoardRule;
+  selector: BoardSelector;
+  lotsPerSide: number;
 }) {
-  const lawn = useMemo(() => lawnTexture(boardRule), [boardRule]);
-  const road = useMemo(roadTexture, []);
+  const lawn = useMemo(() => lawnTexture(selector), [selector]);
+  const road = useMemo(() => roadTexture(lotsPerSide), [lotsPerSide]);
   useEffect(() => () => lawn.dispose(), [lawn]);
   useEffect(() => () => road.dispose(), [road]);
+  const boardHalf = boardHalfFor(lotsPerSide);
+  const innerHalf = innerHalfFor(lotsPerSide);
+  const lawnHalf = lawnHalfFor(lotsPerSide);
   // A two-tone edge: a darker base under a lighter rim that frames the lots.
-  const lower = BOARD_HALF * 2 + 0.16;
-  const upper = BOARD_HALF * 2 + 0.08;
+  const lower = boardHalf * 2 + 0.16;
+  const upper = boardHalf * 2 + 0.08;
   const seam = 0.1;
   return (
     <group>
@@ -235,7 +241,7 @@ function BoardBase({
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <planeGeometry args={[INNER_HALF * 2, INNER_HALF * 2]} />
+        <planeGeometry args={[innerHalf * 2, innerHalf * 2]} />
         <meshStandardMaterial map={road} roughness={1} />
       </mesh>
       <mesh
@@ -243,7 +249,7 @@ function BoardBase({
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <planeGeometry args={[LAWN_HALF * 2, LAWN_HALF * 2]} />
+        <planeGeometry args={[lawnHalf * 2, lawnHalf * 2]} />
         <meshStandardMaterial map={lawn} roughness={1} />
       </mesh>
     </group>
@@ -260,13 +266,14 @@ function TileFace({
   dimmed,
   pickable,
   forSale,
-  boardRule,
+  selector,
+  lotsPerSide,
   unpowered,
 }: {
   index: number;
   amount: number | null;
   owner: Seat | null;
-  salary: number;
+  salary: number | null;
   onSelect: (tile: number) => void;
   preview?: boolean;
   dimmed: boolean;
@@ -274,30 +281,31 @@ function TileFace({
   unpowered: boolean;
   pickable: boolean;
   forSale: boolean;
-  boardRule: BoardRule;
+  selector: BoardSelector;
+  lotsPerSide: number;
 }) {
   const { locale } = useLocale();
   const texture = useMemo(
     () =>
-      isCorner(index)
-        ? cornerTexture(index, locale, salary, boardRule)
+      isCorner(index, lotsPerSide)
+        ? cornerTexture(index, locale, salary, selector)
         : lotTexture(index, {
             amount,
             owner,
             locale,
             forSale,
-            boardRule,
+            boardRule: selector,
           }),
-    [index, amount, owner, locale, salary, forSale, boardRule],
+    [index, amount, owner, locale, salary, forSale, selector, lotsPerSide],
   );
   useEffect(() => () => texture.dispose(), [texture]);
-  const [x, z] = tileCenter(index);
-  const [along, depth] = tileSize(index);
+  const [x, z] = tileCenter(index, lotsPerSide);
+  const [along, depth] = tileSize(index, lotsPerSide);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: R3F meshes are inspected with the accessible board controls.
     <mesh
       position={[x, LOT_TOP + 0.0015, z]}
-      rotation={[-Math.PI / 2, 0, faceRotation(index)]}
+      rotation={[-Math.PI / 2, 0, faceRotation(index, lotsPerSide)]}
       receiveShadow
       onClick={(event) => {
         if (preview || !pickable) return;
@@ -336,8 +344,9 @@ function BoardTiles({
   saleBlocked,
 }: BoardProps) {
   const boardConfig = state?.config ?? config;
-  const rule = boardConfig ? boardRule(boardConfig) : "country";
-  const board = getBoard(rule);
+  const selector: BoardSelector = boardConfig ?? "country";
+  const board = useMemo(() => getBoard(selector), [selector]);
+  const lotsPerSide = getBoardLotsPerSide(selector);
   const mesh = useRef<THREE.InstancedMesh>(null);
   const transforms = useMemo(() => new THREE.Object3D(), []);
   const color = useMemo(() => new THREE.Color(), []);
@@ -354,10 +363,10 @@ function BoardTiles({
   useEffect(() => {
     if (!mesh.current) return;
     for (const tile of board) {
-      const [x, z] = tileCenter(tile.index);
-      const [along, depth] = tileSize(tile.index);
+      const [x, z] = tileCenter(tile.index, lotsPerSide);
+      const [along, depth] = tileSize(tile.index, lotsPerSide);
       transforms.position.set(x, (BOARD_TOP + LOT_TOP) / 2, z);
-      transforms.rotation.set(0, tileRotation(tile.index), 0);
+      transforms.rotation.set(0, tileRotation(tile.index, lotsPerSide), 0);
       transforms.scale.set(
         along - LOT_GAP,
         LOT_TOP - BOARD_TOP,
@@ -374,16 +383,26 @@ function BoardTiles({
       else color.copy(neutral);
       mesh.current.setColorAt(tile.index, color);
     }
+    mesh.current.count = board.length;
     mesh.current.instanceMatrix.needsUpdate = true;
     mesh.current.computeBoundingSphere();
     if (mesh.current.instanceColor)
       mesh.current.instanceColor.needsUpdate = true;
-  }, [state, selected, targets, transforms, color, neutral, board]);
-  const salary = boardConfig?.startSalary ?? ECONOMY.startSalary;
+  }, [
+    state,
+    selected,
+    targets,
+    transforms,
+    color,
+    neutral,
+    board,
+    lotsPerSide,
+  ]);
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: R3F meshes are inspected with the accessible board controls. */}
       <instancedMesh
+        key={board.length}
         ref={mesh}
         args={[undefined, undefined, board.length]}
         receiveShadow
@@ -411,7 +430,7 @@ function BoardTiles({
             key={tile.index}
             index={tile.index}
             owner={owner}
-            salary={salary}
+            salary={null}
             dimmed={Boolean(targets && !targets.includes(tile.index))}
             unpowered={Boolean(
               state && property && powerCutActive(state, property),
@@ -424,11 +443,12 @@ function BoardTiles({
             forSale={
               saleSeat !== undefined && Boolean(targets?.includes(tile.index))
             }
-            boardRule={rule}
+            selector={selector}
+            lotsPerSide={lotsPerSide}
             amount={
-              owner != null && state
+              !preview && owner != null && state
                 ? propertyRent(state, tile.index)
-                : tilePrice(tile.index, state ?? (config ? { config } : null))
+                : null
             }
             onSelect={onSelect}
             preview={preview}
@@ -456,7 +476,8 @@ function outlineGeometry(width: number, depth: number, border: number) {
   return new THREE.ShapeGeometry(shape);
 }
 
-function TileFocus({ state, selected, preview, targets }: BoardProps) {
+function TileFocus({ state, config, selected, preview, targets }: BoardProps) {
+  const lotsPerSide = getBoardLotsPerSide(state?.config ?? config ?? "country");
   const outlines = useMemo(
     () => ({
       lot: outlineGeometry(LOT_WIDTH, LOT_DEPTH, 0.06),
@@ -479,13 +500,15 @@ function TileFocus({ state, selected, preview, targets }: BoardProps) {
     <>
       {focused.map((tile, index) => {
         if (tile == null || (index === 1 && tile === decisionTile)) return null;
-        const [x, z] = tileCenter(tile);
+        const [x, z] = tileCenter(tile, lotsPerSide);
         return (
           <mesh
             key={tile}
-            geometry={isCorner(tile) ? outlines.corner : outlines.lot}
+            geometry={
+              isCorner(tile, lotsPerSide) ? outlines.corner : outlines.lot
+            }
             position={[x, LOT_TOP + 0.004, z]}
-            rotation={[-Math.PI / 2, 0, tileRotation(tile)]}
+            rotation={[-Math.PI / 2, 0, tileRotation(tile, lotsPerSide)]}
             renderOrder={2}
           >
             <meshBasicMaterial
@@ -513,8 +536,10 @@ type TownsHandle = {
 const GROWTH_STAGGER = 0.16;
 const GROWTH_SPAN = 0.6;
 const growthEase = gsap.parseEase("back.out(2.2)");
-/** Every small house on the lots, at most three on each of the 32 spaces. */
-const HOUSE_CAPACITY = 96;
+/** Every small house on the lots, at most three on each space. */
+const HOUSE_CAPACITY = MAX_BOARD_SIZE * 3;
+const BUILDING_WALL_CAPACITY = MAX_BOARD_SIZE * 3;
+const BUILDING_WINDOW_CAPACITY = 1280;
 
 /** A unit triangular prism, base on y = 0 and centered on z. */
 function prism() {
@@ -642,8 +667,9 @@ function Towns({
   handle: { current: TownsHandle | null };
 }) {
   const boardConfig = state?.config ?? config;
-  const rule = boardConfig ? boardRule(boardConfig) : "country";
-  const board = getBoard(rule);
+  const selector: BoardSelector = boardConfig ?? "country";
+  const lotsPerSide = getBoardLotsPerSide(selector);
+  const board = useMemo(() => getBoard(selector), [selector]);
   const maxLevel =
     boardConfig && economyRule(boardConfig) === "prototype" ? 5 : 4;
   const walls = useRef<THREE.InstancedMesh>(null);
@@ -699,15 +725,15 @@ function Towns({
               )
             : 1;
           if (rise <= 0) continue;
-          const bandZ = buildingBandZ(tile.index);
+          const bandZ = buildingBandZ(tile.index, lotsPerSide);
           const part = (
             localX: number,
             bottom: number,
             size: [number, number, number],
             hex: string,
           ) => {
-            const [x, z] = tilePoint(tile.index, localX, bandZ);
-            dummy.rotation.set(0, tileRotation(tile.index), 0);
+            const [x, z] = tilePoint(tile.index, localX, bandZ, lotsPerSide);
+            dummy.rotation.set(0, tileRotation(tile.index, lotsPerSide), 0);
             dummy.position.set(x, LOT_TOP + bottom + size[1] / 2, z);
             dummy.scale.set(...size);
             dummy.updateMatrix();
@@ -729,10 +755,10 @@ function Towns({
         const roofColor =
           owner != null
             ? PLAYER_COLORS[owner]
-            : tileColor(tile.index, { boardRule: rule });
-        const angle = tileRotation(tile.index);
-        const bandZ = buildingBandZ(tile.index);
-        const [faceX, faceZ] = visibleFaces(tile.index);
+            : tileColor(tile.index, selector);
+        const angle = tileRotation(tile.index, lotsPerSide);
+        const bandZ = buildingBandZ(tile.index, lotsPerSide);
+        const [faceX, faceZ] = visibleFaces(tile.index, lotsPerSide);
         // Width and height scales of the crew's next building, or null
         // before it starts.
         const stage = (): [number, number] | null => {
@@ -756,6 +782,7 @@ function Towns({
             tile.index,
             plotX + (growing?.shake ?? 0),
             bandZ,
+            lotsPerSide,
           );
           // The door turns toward the camera; the side walls are alike.
           dummy.rotation.set(0, faceZ > 0 ? angle : angle + Math.PI, 0);
@@ -779,7 +806,7 @@ function Towns({
           const width = fullWidth * scale[0];
           const height = fullHeight * scale[1];
           const localX = plotX + (growing?.shake ?? 0);
-          const [x, z] = tilePoint(tile.index, localX, bandZ);
+          const [x, z] = tilePoint(tile.index, localX, bandZ, lotsPerSide);
           const base = LOT_TOP;
           dummy.rotation.set(0, angle, 0);
           dummy.position.set(x, base + height / 2, z);
@@ -810,21 +837,25 @@ function Towns({
                 tile.index,
                 localX + column * width * 0.23,
                 bandZ + faceZ * (depth / 2 + 0.004),
+                lotsPerSide,
               );
               dummy.position.set(windowX, y, windowZ);
               dummy.scale.set(width * 0.2, paneHeight, 0.01);
               dummy.updateMatrix();
-              windows.current?.setMatrixAt(windowCount++, dummy.matrix);
+              if (windowCount < BUILDING_WINDOW_CAPACITY)
+                windows.current?.setMatrixAt(windowCount++, dummy.matrix);
             }
             const [sideX, sideZ] = tilePoint(
               tile.index,
               localX + faceX * (width / 2 + 0.004),
               bandZ,
+              lotsPerSide,
             );
             dummy.position.set(sideX, y, sideZ);
             dummy.scale.set(0.01, paneHeight, depth * 0.34);
             dummy.updateMatrix();
-            windows.current?.setMatrixAt(windowCount++, dummy.matrix);
+            if (windowCount < BUILDING_WINDOW_CAPACITY)
+              windows.current?.setMatrixAt(windowCount++, dummy.matrix);
           }
         };
         if (resort) {
@@ -861,7 +892,7 @@ function Towns({
         object.computeBoundingSphere();
       }
     },
-    [preview, dummy, color, board, rule, maxLevel],
+    [preview, dummy, color, board, selector, lotsPerSide, maxLevel],
   );
   useEffect(() => {
     handle.current = { draw };
@@ -894,22 +925,33 @@ function Towns({
       >
         <meshStandardMaterial vertexColors roughness={0.75} />
       </instancedMesh>
-      <instancedMesh ref={walls} args={[undefined, undefined, 72]} castShadow>
+      <instancedMesh
+        ref={walls}
+        args={[undefined, undefined, BUILDING_WALL_CAPACITY]}
+        castShadow
+      >
         <boxGeometry />
         <meshStandardMaterial roughness={0.95} />
       </instancedMesh>
       <instancedMesh
         ref={roofs}
-        args={[roofGeometry, undefined, 72]}
+        args={[roofGeometry, undefined, BUILDING_WALL_CAPACITY]}
         castShadow
       >
         <meshStandardMaterial roughness={0.8} />
       </instancedMesh>
-      <instancedMesh ref={windows} args={[undefined, undefined, 640]}>
+      <instancedMesh
+        ref={windows}
+        args={[undefined, undefined, BUILDING_WINDOW_CAPACITY]}
+      >
         <boxGeometry />
         <meshBasicMaterial color="#35546a" />
       </instancedMesh>
-      <instancedMesh ref={details} args={[undefined, undefined, 72]} castShadow>
+      <instancedMesh
+        ref={details}
+        args={[undefined, undefined, BUILDING_WALL_CAPACITY]}
+        castShadow
+      >
         <boxGeometry />
         <meshStandardMaterial roughness={1} />
       </instancedMesh>
@@ -919,16 +961,24 @@ function Towns({
 
 // The parasol keeps its coral canvas on every beach: it says "beach", and the
 // bungalow beside it says who bought it.
-function ResortProps({ boardRule }: { boardRule: BoardRule }) {
+function ResortProps({
+  selector,
+  lotsPerSide,
+}: {
+  selector: BoardSelector;
+  lotsPerSide: number;
+}) {
   return (
     <>
-      {getBoard(boardRule)
+      {getBoard(selector)
         .filter((tile) => tile.kind === "resort")
         .map((tile) => {
           const [x, z] = tilePoint(
             tile.index,
             -0.28,
-            buildingBandZ(tile.index) + screenTop(tile.index) * 0.04,
+            buildingBandZ(tile.index, lotsPerSide) +
+              screenTop(tile.index, lotsPerSide) * 0.04,
+            lotsPerSide,
           );
           return (
             <BeachUmbrella
@@ -964,11 +1014,13 @@ function PickHighlights({
   targets,
   picked,
   color,
+  lotsPerSide,
   lowGraphics = false,
 }: {
   targets: readonly number[];
   picked: number | null;
   color: string;
+  lotsPerSide: number;
   lowGraphics?: boolean;
 }) {
   const { reducedMotion } = useDirector();
@@ -1002,10 +1054,10 @@ function PickHighlights({
     const glow = fills.current;
     if (!outlines || !glow) return;
     targets.forEach((tile, index) => {
-      const [x, z] = tileCenter(tile);
-      const [along, depth] = tileSize(tile);
+      const [x, z] = tileCenter(tile, lotsPerSide);
+      const [along, depth] = tileSize(tile, lotsPerSide);
       transform.position.set(x, LOT_TOP + 0.0045, z);
-      transform.rotation.set(-Math.PI / 2, 0, tileRotation(tile));
+      transform.rotation.set(-Math.PI / 2, 0, tileRotation(tile, lotsPerSide));
       transform.scale.set(along - LOT_GAP, depth - LOT_GAP, 1);
       transform.updateMatrix();
       outlines.setMatrixAt(index, transform.matrix);
@@ -1019,7 +1071,7 @@ function PickHighlights({
     outlines.computeBoundingSphere();
     glow.computeBoundingSphere();
     invalidate();
-  }, [targets, color, transform, fillMaterial, invalidate]);
+  }, [targets, color, lotsPerSide, transform, fillMaterial, invalidate]);
   useFrame((frameState) => {
     const time = frameState.clock.elapsedTime;
     fillMaterial.opacity = staticHighlights
@@ -1032,12 +1084,13 @@ function PickHighlights({
     // The board renders on demand; keep frames coming only while choosing.
     if (!staticHighlights) frameState.invalidate();
   });
-  const [pinX, pinZ] = picked === null ? [0, 0] : tileCenter(picked);
+  const [pinX, pinZ] =
+    picked === null ? [0, 0] : tileCenter(picked, lotsPerSide);
   return (
     <>
       <instancedMesh
         ref={fills}
-        args={[undefined, fillMaterial, BOARD_SIZE]}
+        args={[undefined, fillMaterial, MAX_BOARD_SIZE]}
         frustumCulled={false}
         renderOrder={1}
       >
@@ -1045,7 +1098,7 @@ function PickHighlights({
       </instancedMesh>
       <instancedMesh
         ref={frames}
-        args={[frame, undefined, BOARD_SIZE]}
+        args={[frame, undefined, MAX_BOARD_SIZE]}
         frustumCulled={false}
         renderOrder={2}
       >
@@ -1094,8 +1147,8 @@ const BUNTING_SAG = 0.08;
 const BUNTING_HALF = 0.46;
 
 /** Tile-local z of a festival garland: the screen-top edge of the plot. */
-function buntingZ(index: number) {
-  return screenTop(index) * (LOT_DEPTH / 2 - 0.05);
+function buntingZ(index: number, lotsPerSide = LOTS_PER_SIDE) {
+  return screenTop(index, lotsPerSide) * (LOT_DEPTH / 2 - 0.05);
 }
 
 /**
@@ -1104,7 +1157,13 @@ function buntingZ(index: number) {
  * The rent multiplier lives in the inspector.
  */
 /** A small shield floats over each shielded property until an attack breaks it. */
-function ShieldMarkers({ state }: { state: PublicState | null }) {
+function ShieldMarkers({
+  state,
+  lotsPerSide,
+}: {
+  state: PublicState | null;
+  lotsPerSide: number;
+}) {
   const texture = useMemo(shieldTexture, []);
   useEffect(() => () => texture.dispose(), [texture]);
   return (
@@ -1112,7 +1171,7 @@ function ShieldMarkers({ state }: { state: PublicState | null }) {
       {state?.properties
         .filter((property) => property.shielded)
         .map((property) => {
-          const [x, z] = tileCenter(property.tile);
+          const [x, z] = tileCenter(property.tile, lotsPerSide);
           return (
             <sprite
               key={property.tile}
@@ -1133,7 +1192,13 @@ function ShieldMarkers({ state }: { state: PublicState | null }) {
   );
 }
 
-function FestivalMarkers({ state }: { state: PublicState | null }) {
+function FestivalMarkers({
+  state,
+  lotsPerSide,
+}: {
+  state: PublicState | null;
+  lotsPerSide: number;
+}) {
   const masts = useRef<THREE.InstancedMesh>(null);
   const cords = useRef<THREE.InstancedMesh>(null);
   const flags = useRef<THREE.InstancedMesh>(null);
@@ -1154,7 +1219,9 @@ function FestivalMarkers({ state }: { state: PublicState | null }) {
   );
   const hostTile = state?.championshipHost?.tile ?? null;
   const hostSpot =
-    hostTile === null ? null : tilePoint(hostTile, 0, buntingZ(hostTile));
+    hostTile === null
+      ? null
+      : tilePoint(hostTile, 0, buntingZ(hostTile, lotsPerSide), lotsPerSide);
   useEffect(() => () => pennant.dispose(), [pennant]);
   useEffect(() => {
     const mastMesh = masts.current;
@@ -1165,10 +1232,15 @@ function FestivalMarkers({ state }: { state: PublicState | null }) {
     let cordCount = 0;
     let flagCount = 0;
     for (const tile of festivals) {
-      const angle = tileRotation(tile);
-      const z = buntingZ(tile);
+      const angle = tileRotation(tile, lotsPerSide);
+      const z = buntingZ(tile, lotsPerSide);
       for (const side of [-1, 1]) {
-        const [x, worldZ] = tilePoint(tile, side * BUNTING_HALF, z);
+        const [x, worldZ] = tilePoint(
+          tile,
+          side * BUNTING_HALF,
+          z,
+          lotsPerSide,
+        );
         transform.position.set(x, LOT_TOP + BUNTING_HEIGHT / 2, worldZ);
         transform.rotation.set(0, 0, 0);
         transform.scale.set(1, BUNTING_HEIGHT, 1);
@@ -1177,7 +1249,12 @@ function FestivalMarkers({ state }: { state: PublicState | null }) {
       }
       // Two straight cord halves meet at the sagging middle of the garland.
       for (const side of [-1, 1]) {
-        const [x, worldZ] = tilePoint(tile, (side * BUNTING_HALF) / 2, z);
+        const [x, worldZ] = tilePoint(
+          tile,
+          (side * BUNTING_HALF) / 2,
+          z,
+          lotsPerSide,
+        );
         transform.position.set(
           x,
           LOT_TOP + BUNTING_HEIGHT - BUNTING_SAG / 2,
@@ -1196,7 +1273,7 @@ function FestivalMarkers({ state }: { state: PublicState | null }) {
         const along =
           -BUNTING_HALF * 0.86 +
           (flag * BUNTING_HALF * 1.72) / (BUNTING_FLAGS - 1);
-        const [x, worldZ] = tilePoint(tile, along, z);
+        const [x, worldZ] = tilePoint(tile, along, z, lotsPerSide);
         const drop = BUNTING_SAG * (1 - Math.abs(along) / BUNTING_HALF);
         transform.position.set(x, LOT_TOP + BUNTING_HEIGHT - drop, worldZ);
         transform.rotation.set(0, angle, 0);
@@ -1217,7 +1294,7 @@ function FestivalMarkers({ state }: { state: PublicState | null }) {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.computeBoundingSphere();
     }
-  }, [festivals, transform, color]);
+  }, [festivals, lotsPerSide, transform, color]);
   return (
     <>
       <instancedMesh ref={masts} args={[undefined, undefined, 48]} castShadow>
@@ -1373,6 +1450,7 @@ function Die({
 
 function Pawn({
   seat,
+  lotsPerSide = LOTS_PER_SIDE,
   cosmetics,
   control,
   active,
@@ -1380,6 +1458,7 @@ function Pawn({
   groupRef,
 }: {
   seat: Seat;
+  lotsPerSide?: number;
   cosmetics?: PlayerCosmetics | null;
   control?: "human" | "bot" | null;
   active: boolean;
@@ -1387,7 +1466,7 @@ function Pawn({
   groupRef: (group: THREE.Group | null) => void;
 }) {
   return (
-    <group ref={groupRef} position={pawnPosition(seat, 0)}>
+    <group ref={groupRef} position={pawnPosition(seat, 0, lotsPerSide)}>
       <group rotation={[0, Math.PI / 4, 0]} scale={PAWN_SCALE}>
         <PawnModel
           seat={seat}
@@ -1410,8 +1489,9 @@ function reserveSpot(
   localX: number,
   localZ: number,
   y: number,
+  lotsPerSide = LOTS_PER_SIDE,
 ): [number, number, number] {
-  const { position, rotation } = reserveAnchor(seat);
+  const { position, rotation } = reserveAnchor(seat, lotsPerSide);
   return [
     position[0] + localX * Math.cos(rotation) + localZ * Math.sin(rotation),
     y,
@@ -1427,7 +1507,13 @@ function cashBundleCount(cash: number) {
   );
 }
 
-function CashReserves({ state }: { state: PublicState }) {
+function CashReserves({
+  state,
+  lotsPerSide,
+}: {
+  state: PublicState;
+  lotsPerSide: number;
+}) {
   const notes = useRef<THREE.InstancedMesh>(null);
   const faces = useRef<THREE.InstancedMesh>(null);
   const bands = useRef<THREE.InstancedMesh>(null);
@@ -1450,7 +1536,7 @@ function CashReserves({ state }: { state: PublicState }) {
     let edgeCount = 0;
     for (const player of state.players) {
       if (player.bankrupt || player.cash <= 0) continue;
-      const { rotation } = reserveAnchor(player.seat);
+      const { rotation } = reserveAnchor(player.seat, lotsPerSide);
       // This is a capped physical illustration, never an alternate cash counter.
       const bundles = cashBundleCount(player.cash);
       color.set(PLAYER_COLORS[player.seat]);
@@ -1459,7 +1545,7 @@ function CashReserves({ state }: { state: PublicState }) {
         const layer = Math.floor(index / 2);
         const y = BOARD_BOTTOM + 0.065 + layer * 0.15;
         transform.position.set(
-          ...reserveSpot(player.seat, 0, (column - 0.5) * 0.56, y),
+          ...reserveSpot(player.seat, 0, (column - 0.5) * 0.56, y, lotsPerSide),
         );
         transform.rotation.set(0, rotation + (layer % 2 ? 0.05 : -0.02), 0);
         transform.scale.set(1, 1, 1);
@@ -1485,6 +1571,7 @@ function CashReserves({ state }: { state: PublicState }) {
             0.62,
             -0.15 + Math.floor(index / 3) * 0.25,
             BOARD_BOTTOM + 0.035 + (index % 3) * 0.048,
+            lotsPerSide,
           ),
         );
         transform.rotation.set(0, 0, 0);
@@ -1501,7 +1588,7 @@ function CashReserves({ state }: { state: PublicState }) {
       mesh.computeBoundingSphere();
     }
     invalidate();
-  }, [state, transform, color, invalidate]);
+  }, [state, lotsPerSide, transform, color, invalidate]);
   return (
     <group>
       <instancedMesh
@@ -1568,7 +1655,15 @@ function CashReserves({ state }: { state: PublicState }) {
 }
 
 /** Kept Chance cards lie face up beside their holder's cash, one per card. */
-function HeldCards({ state, card }: { state: PublicState; card: KeepCard }) {
+function HeldCards({
+  state,
+  card,
+  lotsPerSide,
+}: {
+  state: PublicState;
+  card: KeepCard;
+  lotsPerSide: number;
+}) {
   const cards = useRef<THREE.InstancedMesh>(null);
   const transform = useMemo(() => new THREE.Object3D(), []);
   const texture = useMemo(() => heldCardTexture(card), [card]);
@@ -1581,13 +1676,14 @@ function HeldCards({ state, card }: { state: PublicState; card: KeepCard }) {
     for (const player of state.players) {
       const slot = player.heldCards.indexOf(card);
       if (player.bankrupt || slot < 0) continue;
-      const { rotation } = reserveAnchor(player.seat);
+      const { rotation } = reserveAnchor(player.seat, lotsPerSide);
       transform.position.set(
         ...reserveSpot(
           player.seat,
           -0.86 - slot * 0.14,
           (slot - 0.3) * 0.44,
           BOARD_BOTTOM + 0.008 + slot * 0.006,
+          lotsPerSide,
         ),
       );
       transform.rotation.set(0, rotation + (slot ? -0.16 : 0.07), 0);
@@ -1598,7 +1694,7 @@ function HeldCards({ state, card }: { state: PublicState; card: KeepCard }) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
     invalidate();
-  }, [state, card, transform, invalidate]);
+  }, [state, card, lotsPerSide, transform, invalidate]);
   return (
     <instancedMesh
       ref={cards}
@@ -1674,7 +1770,22 @@ function SceneContent(props: BoardProps) {
   const { state, preview, zoom = 1, pan, onRollAnchor, onBoardHitTest } = props;
   const rotation = props.rotation ?? DEFAULT_BOARD_ROTATION;
   const boardConfig = state?.config ?? props.config;
-  const rule = boardConfig ? boardRule(boardConfig) : "country";
+  const selector: BoardSelector = boardConfig ?? "country";
+  const lotsPerSide = getBoardLotsPerSide(selector);
+  const boardSize = (lotsPerSide + 1) * 4;
+  const boardHalf = boardHalfFor(lotsPerSide);
+  const shadowSpan = Math.max(9, boardHalf + 4);
+  const rollSpot: readonly [number, number, number] =
+    lotsPerSide < LOTS_PER_SIDE ? [0.68, LAWN_TOP, 0.68] : ROLL_SPOT;
+  const dieRest: readonly [number, number, number][] =
+    lotsPerSide < LOTS_PER_SIDE
+      ? [
+          [-0.36, DIE_REST_Y, 0.36],
+          [0.36, DIE_REST_Y, -0.36],
+        ]
+      : DIE_REST;
+  const lotsPerSideRef = useRef(lotsPerSide);
+  lotsPerSideRef.current = lotsPerSide;
   const chosen =
     props.saleSeat !== undefined ? props.selected : (props.picked ?? null);
   const { camera, invalidate, size, gl, viewport } = useThree();
@@ -1750,9 +1861,10 @@ function SceneContent(props: BoardProps) {
         pan,
         interfaceZoom(),
         rotation,
+        lotsPerSide,
       );
     if (onRollAnchor) {
-      const spot = new THREE.Vector3(...ROLL_SPOT)
+      const spot = new THREE.Vector3(...rollSpot)
         .applyQuaternion(rotation)
         .project(camera);
       onRollAnchor({
@@ -1769,6 +1881,7 @@ function SceneContent(props: BoardProps) {
     zoom,
     pan,
     rotation,
+    lotsPerSide,
     preview,
     invalidate,
     onRollAnchor,
@@ -1785,10 +1898,11 @@ function SceneContent(props: BoardProps) {
         x - bounds.left,
         y - bounds.top,
         rotation,
+        lotsPerSide,
       );
     });
     return () => onBoardHitTest(() => false);
-  }, [camera, gl, onBoardHitTest, rotation]);
+  }, [camera, gl, onBoardHitTest, rotation, lotsPerSide]);
   useEffect(() => {
     if (preview) return;
     let propertyEffectGeneration = 0;
@@ -1823,12 +1937,13 @@ function SceneContent(props: BoardProps) {
       if (!mark) return;
       mark.visible = tile !== null;
       if (tile !== null) {
-        const [x, z] = tileCenter(tile);
-        mark.geometry = isCorner(tile)
+        const lps = lotsPerSideRef.current;
+        const [x, z] = tileCenter(tile, lps);
+        mark.geometry = isCorner(tile, lps)
           ? destinationOutlines.corner
           : destinationOutlines.lot;
         mark.position.set(x, LOT_TOP + 0.004, z);
-        mark.rotation.set(-Math.PI / 2, 0, tileRotation(tile));
+        mark.rotation.set(-Math.PI / 2, 0, tileRotation(tile, lps));
         if (mark.material instanceof THREE.MeshBasicMaterial)
           mark.material.color.set(PLAYER_COLORS[seat]);
       }
@@ -1837,19 +1952,29 @@ function SceneContent(props: BoardProps) {
     function snap(next: PublicState | null) {
       if (destination.current) destination.current.visible = false;
       if (cashFlight.current) cashFlight.current.visible = false;
+      const lps = next
+        ? getBoardLotsPerSide(next.config)
+        : lotsPerSideRef.current;
       for (const player of next?.players ?? []) {
         const pawn = pawns.current[player.seat];
         if (!pawn) continue;
-        pawn.position.set(...pawnPosition(player.seat, player.position));
+        pawn.position.set(...pawnPosition(player.seat, player.position, lps));
         pawn.scale.set(1, 1, 1);
         pawn.visible = !player.bankrupt;
       }
+      const restSpots =
+        lps < LOTS_PER_SIDE
+          ? [
+              [-0.36, DIE_REST_Y, 0.36],
+              [0.36, DIE_REST_Y, -0.36],
+            ]
+          : DIE_REST;
       for (let index = 0; index < 2; index++) {
         const die = dice.current[index];
         if (!die) continue;
         const rotation = diceRotation(next?.lastRoll?.dice[index] ?? index + 1);
         die.rotation.set(rotation[0], rotation[1], rotation[2]);
-        die.position.set(...DIE_REST[index]);
+        die.position.set(...(restSpots[index] as [number, number, number]));
       }
       paintDice(next?.lastRoll?.seat ?? null);
       showScore(next?.lastRoll ?? null);
@@ -1905,7 +2030,7 @@ function SceneContent(props: BoardProps) {
         texture = gainTexture(text);
         scoreTextures.current.set(key, texture);
       }
-      const [x, z] = tileCenter(tile);
+      const [x, z] = tileCenter(tile, lotsPerSideRef.current);
       sprite.material.map = texture;
       sprite.material.opacity = 0;
       sprite.material.needsUpdate = true;
@@ -1968,7 +2093,7 @@ function SceneContent(props: BoardProps) {
       const burst = sparks.current;
       if (!ring || !burst) return;
       const effectGeneration = ++propertyEffectGeneration;
-      const [x, z] = tileCenter(tile);
+      const [x, z] = tileCenter(tile, lotsPerSideRef.current);
       ring.position.set(x, LOT_TOP + 0.03, z);
       paintEffect(ringColor, sparkColor);
       ring.visible = burst.visible = true;
@@ -2015,12 +2140,20 @@ function SceneContent(props: BoardProps) {
         return true;
       const generation = ++cashEffectGeneration;
       const lot = transfer.tile;
+      const lps = lotsPerSideRef.current;
+      const [bx, bz] = startBankPoint(lps);
+      const bankSpot: readonly [number, number, number] = [
+        bx,
+        LOT_TOP + 0.12,
+        bz,
+      ];
       const reserve = (
         seat: Seat | null,
       ): readonly [number, number, number] => {
-        if (seat !== null) return reserveSpot(seat, 0, 0, BOARD_BOTTOM + 0.2);
-        if (lot === undefined) return BANK_POSITION;
-        const [x, z] = tileCenter(lot);
+        if (seat !== null)
+          return reserveSpot(seat, 0, 0, BOARD_BOTTOM + 0.2, lps);
+        if (lot === undefined) return bankSpot;
+        const [x, z] = tileCenter(lot, lps);
         return [x, LOT_TOP + 0.12, z];
       };
       const from = reserve(transfer.from);
@@ -2118,10 +2251,17 @@ function SceneContent(props: BoardProps) {
           const sprite = score.current;
           if (sprite) sprite.visible = false;
           await play((timeline) => {
+            const currentRest =
+              lotsPerSideRef.current < LOTS_PER_SIDE
+                ? [
+                    [-0.36, DIE_REST_Y, 0.36],
+                    [0.36, DIE_REST_Y, -0.36],
+                  ]
+                : DIE_REST;
             for (let index = 0; index < 2; index++) {
               const die = dice.current[index];
               if (!die) continue;
-              const rest = DIE_REST[index];
+              const rest = currentRest[index];
               const target = diceRotation(event.dice[index]);
               const start = shake + index * 0.07;
               const fromX = rest[0] - inward[0] * 2.6;
@@ -2215,11 +2355,17 @@ function SceneContent(props: BoardProps) {
         } else if (event.type === "PlayerMoved") {
           const pawn = pawns.current[event.seat];
           if (!pawn) return;
+          const lps = context.next
+            ? getBoardLotsPerSide(context.next.config)
+            : lotsPerSideRef.current;
+          const activeBoardSize = (lps + 1) * 4;
           const before = context.previous?.players.find(
             (player) => player.seat === event.seat,
           );
           const from = event.from ?? before?.position ?? 0;
-          const steps = event.steps ?? (event.position - from + 32) % 32;
+          const steps =
+            event.steps ??
+            (event.position - from + activeBoardSize) % activeBoardSize;
           // The salary is paid the moment the pawn reaches Start, not when
           // the walk ends.
           const pending: Promise<unknown>[] = [];
@@ -2237,7 +2383,7 @@ function SceneContent(props: BoardProps) {
           await play((timeline) => {
             if (steps === 0) {
               // A move without a route: one long leap to the destination.
-              const [x, y, z] = pawnPosition(event.seat, event.position);
+              const [x, y, z] = pawnPosition(event.seat, event.position, lps);
               const half = DECISION_TIMING.jumpAnimation / 2000;
               timeline.to(pawn.position, {
                 x,
@@ -2271,11 +2417,13 @@ function SceneContent(props: BoardProps) {
               const lift = 0.5 * pace;
               for (let step = 1; step <= count; step++) {
                 const tile =
-                  (((from + step * Math.sign(steps)) % 32) + 32) % 32;
+                  (((from + step * Math.sign(steps)) % activeBoardSize) +
+                    activeBoardSize) %
+                  activeBoardSize;
                 const last = step === count;
                 const [x, y, z] = last
-                  ? pawnPosition(event.seat, tile)
-                  : passingPosition(event.seat, tile);
+                  ? pawnPosition(event.seat, tile, lps)
+                  : passingPosition(event.seat, tile, lps);
                 const at = (step - 1) * duration;
                 if (tile === 0)
                   timeline.call(paySalary, [], at + duration * 0.9);
@@ -2346,7 +2494,7 @@ function SceneContent(props: BoardProps) {
           const ring = pulse.current;
           if (!ring) return;
           const effectGeneration = ++propertyEffectGeneration;
-          const [x, z] = tileCenter(event.tile);
+          const [x, z] = tileCenter(event.tile, lotsPerSideRef.current);
           ring.position.set(x, LOT_TOP + 0.03, z);
           const owner = getProperty(context.next, event.tile)?.owner;
           paintEffect(
@@ -2426,7 +2574,7 @@ function SceneContent(props: BoardProps) {
           const burst = sparks.current;
           if (!ring || !burst) return;
           const effectGeneration = ++propertyEffectGeneration;
-          const [x, z] = tileCenter(event.tile);
+          const [x, z] = tileCenter(event.tile, lotsPerSideRef.current);
           const wreck = { tile: event.tile, progress: 1, shake: 0, time: 0 };
           const drawWreck = () =>
             towns.current?.draw(context.previous ?? context.next, wreck);
@@ -2588,16 +2736,17 @@ function SceneContent(props: BoardProps) {
         color="#fff4dc"
         castShadow={!props.lowGraphics}
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-9}
-        shadow-camera-right={9}
-        shadow-camera-top={9}
-        shadow-camera-bottom={-9}
+        shadow-camera-left={-shadowSpan}
+        shadow-camera-right={shadowSpan}
+        shadow-camera-top={shadowSpan}
+        shadow-camera-bottom={-shadowSpan}
         shadow-normalBias={0.035}
         shadow-radius={3}
       />
       <group name="board-user-view" quaternion={rotation}>
         <BoardBase
-          boardRule={rule}
+          selector={selector}
+          lotsPerSide={lotsPerSide}
           onRendered={() => {
             if (rendered.current) return;
             rendered.current = true;
@@ -2607,22 +2756,30 @@ function SceneContent(props: BoardProps) {
               ?.setAttribute("data-scene-ready", "true");
           }}
         />
-        {!preview && state && <CashReserves state={state} />}
+        {!preview && state && (
+          <CashReserves state={state} lotsPerSide={lotsPerSide} />
+        )}
         {!preview &&
           state &&
           KEEP_CARDS.map((card) => (
-            <HeldCards key={card} state={state} card={card} />
+            <HeldCards
+              key={card}
+              state={state}
+              card={card}
+              lotsPerSide={lotsPerSide}
+            />
           ))}
         <BoardTiles {...props} />
         <TileFocus {...props} />
         {!preview && props.targets && (
           <PickHighlights
-            key={props.pickKey}
+            key={`${boardSize}:${props.pickKey}`}
             targets={props.targets}
             picked={
               chosen != null && props.targets.includes(chosen) ? chosen : null
             }
             color={PLAYER_COLORS[props.pickSeat ?? state?.pending?.seat ?? 0]}
+            lotsPerSide={lotsPerSide}
             lowGraphics={props.lowGraphics}
           />
         )}
@@ -2639,11 +2796,11 @@ function SceneContent(props: BoardProps) {
           animated={ambient}
           handle={downtown}
         />
-        <ResortProps boardRule={rule} />
-        <FestivalMarkers state={state} />
-        {!preview && <ShieldMarkers state={state} />}
+        <ResortProps selector={selector} lotsPerSide={lotsPerSide} />
+        <FestivalMarkers state={state} lotsPerSide={lotsPerSide} />
+        {!preview && <ShieldMarkers state={state} lotsPerSide={lotsPerSide} />}
         <Landmarks
-          boardRule={rule}
+          boardRule={selector}
           state={state}
           animated={ambient}
           lowGraphics={props.lowGraphics}
@@ -2677,6 +2834,7 @@ function SceneContent(props: BoardProps) {
             <Pawn
               key={seat}
               seat={seat}
+              lotsPerSide={lotsPerSide}
               cosmetics={cosmetics}
               control={control}
               active={
@@ -2691,7 +2849,7 @@ function SceneContent(props: BoardProps) {
             />
           );
         })}
-        {DIE_REST.map((position, index) => (
+        {dieRest.map((position, index) => (
           <Die
             key={position.join(",")}
             position={position}
@@ -2806,6 +2964,7 @@ function SaleLabels({
   height,
 }: BoardProps & { width: number; height: number }) {
   const { t } = useLocale();
+  const lotsPerSide = getBoardLotsPerSide(state?.config ?? "country");
   const targets = saleTargets(state, saleSeat);
   const camera = useMemo(() => {
     const value = initializeBoardCamera(new THREE.OrthographicCamera());
@@ -2818,9 +2977,10 @@ function SaleLabels({
       pan,
       interfaceZoom(),
       rotation,
+      lotsPerSide,
     );
     return value;
-  }, [width, height, zoom, pan, rotation]);
+  }, [width, height, zoom, pan, rotation, lotsPerSide]);
   if (!state || !targets.length || !width || !height) return null;
   return (
     <fieldset
@@ -2831,7 +2991,7 @@ function SaleLabels({
       )}
     >
       {targets.map((tile) => {
-        const [x, z] = tilePoint(tile, 0, 0.3);
+        const [x, z] = tilePoint(tile, 0, 0.3, lotsPerSide);
         const point = new THREE.Vector3(x, LOT_TOP + 0.08, z)
           .applyQuaternion(rotation)
           .project(camera);
@@ -2871,6 +3031,7 @@ export default function BoardScene(props: BoardProps) {
   const { t } = useLocale();
   const { reducedMotion } = useDirector();
   const config = props.state?.config ?? props.config;
+  const lotsPerSide = getBoardLotsPerSide(config ?? "country");
   const layer = useRef<HTMLElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [orientation, setOrientation] = useState<BoardOrientation>(
@@ -2898,8 +3059,9 @@ export default function BoardScene(props: BoardProps) {
         undefined,
         interfaceZoom(),
         rotation,
+        lotsPerSide,
       ),
-    [size.width, size.height, props.preview, zoom, rotation],
+    [size.width, size.height, props.preview, zoom, rotation, lotsPerSide],
   );
   const pan = useBoardView({
     layer,
@@ -2955,6 +3117,8 @@ export default function BoardScene(props: BoardProps) {
         props.interactiveZoom && !props.preview && !props.viewLocked,
       )}
       data-board-rule={config ? boardRule(config) : "country"}
+      data-map-id={config?.mapId ?? "world"}
+      data-map-extra-locations={config?.mapExtraLocations ?? 0}
       data-scene-ready="false"
       data-low-graphics={Boolean(props.lowGraphics)}
       data-sale-active={

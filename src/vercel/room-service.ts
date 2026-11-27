@@ -273,7 +273,11 @@ function buildLobbyState(doc: VercelRoomDoc, now: number): LobbyState {
     hostSeat: doc.hostSeat,
     locked: doc.locked,
     status,
-    config: doc.config,
+    config: {
+      ...doc.config,
+      mapId: doc.config.mapId ?? "world",
+      mapExtraLocations: doc.config.mapExtraLocations ?? 0,
+    },
     boardRule: rules.boardRule ?? DEFAULT_GAME_CONFIG.boardRule,
     economyRule: rules.economyRule ?? DEFAULT_GAME_CONFIG.economyRule,
     hotelPurchaseRule:

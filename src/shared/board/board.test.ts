@@ -34,7 +34,7 @@ describe("board configuration", () => {
     expect(getTile(29, {})?.kind).toBe("tax");
     expect(
       COUNTRY_IDS.map((country) => getCountryCityTiles(country, {}).length),
-    ).toEqual([2, 3, 3, 2, 3, 2, 3, 2]);
+    ).toEqual([2, 3, 3, 2, 3, 2, 3, 2, 0, 0, 0, 0]);
   });
   it("contains every index exactly once", () => {
     expect(BOARD).toHaveLength(BOARD_SIZE);
@@ -62,12 +62,15 @@ describe("board configuration", () => {
     expect(BOARD.filter(isResortTile)).toHaveLength(4);
     expect(
       COUNTRY_IDS.map((country) => getCountryCityTiles(country).length),
-    ).toEqual([3, 3, 3, 2, 2, 3, 2, 2]);
+    ).toEqual([3, 3, 3, 2, 2, 3, 2, 2, 0, 0, 0, 0]);
     // Every colour group is contiguous on its side, apart from one resort,
     // Chance or tax square, so a group always reads as one country.
     for (const country of COUNTRY_IDS) {
       const tiles = getCountryCityTiles(country).map((tile) => tile.index);
-      expect((tiles.at(-1) ?? 0) - tiles[0]).toBeLessThanOrEqual(tiles.length);
+      if (tiles.length > 0)
+        expect((tiles.at(-1) ?? 0) - tiles[0]).toBeLessThanOrEqual(
+          tiles.length,
+        );
     }
     expect(BOARD.filter(isCityTile).map((tile) => tile.side)).toEqual([
       1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4,

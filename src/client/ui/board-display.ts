@@ -1,12 +1,16 @@
 import {
+  type BoardSelector,
   ECONOMY,
   getBoard,
   getTileLandPrice,
+  isCityTile,
+  isResortTile,
+  type MapId,
+  resolveMapId,
 } from "../../shared/board/index.js";
 import {
   boardRule,
   economyRule,
-  type GameConfig,
   type PublicState,
   type Seat,
 } from "../../shared/engine/index.js";
@@ -40,6 +44,10 @@ export const REGION_COLORS = {
   F: "#e6c033",
   G: "#3fb5ad",
   H: "#dc72bd",
+  I: "#d45d5d",
+  J: "#4b9cd3",
+  K: "#84b04c",
+  L: "#b06cc4",
 } as const;
 // One country per colour group, from France to Japan; resorts sit between.
 export const TILE_NAMES = [
@@ -270,15 +278,268 @@ const LEGACY_VIETNAMESE_TILE_NAMES = [
   "Osaka",
   "Tokyo",
 ] as const;
-type BoardConfig = Pick<GameConfig, "boardRule">;
+type BoardConfig = BoardSelector;
+
+type PlaceName = string | readonly [fr: string, en: string, vi: string];
+
+function resolvePlace(entry: PlaceName): string {
+  return typeof entry === "string"
+    ? entry
+    : translate(entry[0], entry[1], entry[2]);
+}
+
+const MAP_CITIES: Record<MapId, readonly PlaceName[]> = {
+  world: [
+    "Lyon",
+    "Marseille",
+    "Paris",
+    "Naples",
+    "Milan",
+    "Rome",
+    "Faro",
+    "Porto",
+    ["Lisbonne", "Lisbon", "Lisbon"],
+    ["Hambourg", "Hamburg", "Hamburg"],
+    "Berlin",
+    ["Genève", "Geneva", "Geneva"],
+    "Zurich",
+    "Amsterdam",
+    "Madrid",
+    ["Athènes", "Athens", "Athens"],
+    "Stockholm",
+    ["Copenhague", "Copenhagen", "Copenhagen"],
+    "Dublin",
+    "Istanbul",
+    ["Le Caire", "Cairo", "Cairo"],
+    "Marrakech",
+    "Cape Town",
+    "Mumbai",
+    "Bangkok",
+    "Taipei",
+    "Jakarta",
+    ["Manille", "Manila", "Manila"],
+    "Auckland",
+    "Vancouver",
+    "Toronto",
+    ["Mexico", "Mexico City", "Mexico City"],
+    "Chicago",
+    "Los Angeles",
+    "New York",
+    "Bogotá",
+    "Lima",
+    "Santiago",
+    "Buenos Aires",
+    ["Rio", "Rio de Janeiro", "Rio de Janeiro"],
+    "Busan",
+    ["Séoul", "Seoul", "Seoul"],
+    "Osaka",
+    "Tokyo",
+  ],
+  usa: [
+    "Boise",
+    "Anchorage",
+    "Albuquerque",
+    "Omaha",
+    "Tucson",
+    "Fresno",
+    "Salt Lake City",
+    "Sacramento",
+    "Kansas City",
+    "Raleigh",
+    "Indianapolis",
+    "Columbus",
+    "Milwaukee",
+    "Charlotte",
+    "Nashville",
+    "Austin",
+    "Memphis",
+    ["La Nouvelle-Orléans", "New Orleans", "New Orleans"],
+    "Portland",
+    "Denver",
+    "Minneapolis",
+    "St. Louis",
+    "Pittsburgh",
+    "Cleveland",
+    "Detroit",
+    "Baltimore",
+    "Orlando",
+    "Tampa",
+    "Phoenix",
+    "San Diego",
+    "San Antonio",
+    "Dallas",
+    "Houston",
+    "Atlanta",
+    ["Philadelphie", "Philadelphia", "Philadelphia"],
+    "Washington",
+    "Boston",
+    "Seattle",
+    "Las Vegas",
+    "Miami",
+    "Chicago",
+    "San Francisco",
+    "Los Angeles",
+    "New York",
+  ],
+  vietnam: [
+    "Lạng Sơn",
+    "Cao Bằng",
+    "Điện Biên Phủ",
+    "Hà Giang",
+    "Lào Cai",
+    "Yên Bái",
+    "Thái Nguyên",
+    "Bắc Ninh",
+    "Hải Dương",
+    "Nam Định",
+    "Ninh Bình",
+    "Thanh Hóa",
+    "Vinh",
+    "Hà Tĩnh",
+    "Đồng Hới",
+    "Đông Hà",
+    "Huế",
+    "Hội An",
+    "Tam Kỳ",
+    "Quảng Ngãi",
+    "Quy Nhơn",
+    "Tuy Hòa",
+    "Buôn Ma Thuột",
+    "Pleiku",
+    "Đà Lạt",
+    "Phan Thiết",
+    "Biên Hòa",
+    "Thủ Dầu Một",
+    "Vũng Tàu",
+    "Mỹ Tho",
+    "Bến Tre",
+    "Vĩnh Long",
+    "Long Xuyên",
+    "Rạch Giá",
+    "Cà Mau",
+    "Hạ Long",
+    "Hải Phòng",
+    "Nha Trang",
+    "Cần Thơ",
+    "Đà Nẵng",
+    "Bình Dương",
+    "Thủ Đức",
+    ["Hanoï", "Hanoi", "Hà Nội"],
+    ["Hô-Chi-Minh", "Ho Chi Minh", "TP. Hồ Chí Minh"],
+  ],
+  japan: [
+    "Kushiro",
+    "Aomori",
+    "Akita",
+    "Morioka",
+    "Yamagata",
+    "Fukushima",
+    "Mito",
+    "Utsunomiya",
+    "Takasaki",
+    "Nagano",
+    "Toyama",
+    "Kanazawa",
+    "Fukui",
+    "Kofu",
+    "Matsumoto",
+    "Shizuoka",
+    "Hamamatsu",
+    "Gifu",
+    "Tsu",
+    "Otsu",
+    "Nara",
+    "Wakayama",
+    "Tottori",
+    "Matsue",
+    "Okayama",
+    "Takamatsu",
+    "Matsuyama",
+    "Kochi",
+    "Miyazaki",
+    "Kagoshima",
+    "Kumamoto",
+    "Nagasaki",
+    "Oita",
+    "Niigata",
+    "Sendai",
+    "Hiroshima",
+    "Kobe",
+    "Fukuoka",
+    "Sapporo",
+    "Nagoya",
+    "Yokohama",
+    "Kyoto",
+    "Osaka",
+    "Tokyo",
+  ],
+};
+
+const MAP_RESORTS: Record<MapId, readonly PlaceName[]> = {
+  world: ["Seychelles", "Maldives", "Bora Bora", ["Hawaï", "Hawaii", "Hawaii"]],
+  usa: ["Maui", "Aspen", "Key West", "Lake Tahoe"],
+  vietnam: ["Phú Quốc", "Côn Đảo", "Cát Bà", "Mũi Né"],
+  japan: ["Okinawa", "Hakone", "Niseko", "Ishigaki"],
+};
+
+export function mapLabel(mapId: MapId): string {
+  switch (mapId) {
+    case "usa":
+      return translate("États-Unis", "USA", "Nước Mỹ");
+    case "vietnam":
+      return translate("Viêt Nam", "Vietnam", "Việt Nam");
+    case "japan":
+      return translate("Japon", "Japan", "Nhật Bản");
+    default:
+      return translate("Monde", "World", "Thế giới");
+  }
+}
+
 export function tileName(index: number, config?: BoardConfig): string {
-  const legacy = config !== undefined && boardRule(config) === "legacy";
-  return translate(
-    (legacy ? LEGACY_TILE_NAMES : TILE_NAMES)[index] ?? "",
-    (legacy ? LEGACY_ENGLISH_TILE_NAMES : ENGLISH_TILE_NAMES)[index] ?? "",
-    (legacy ? LEGACY_VIETNAMESE_TILE_NAMES : VIETNAMESE_TILE_NAMES)[index] ??
-      "",
-  );
+  const obj = typeof config === "string" ? { boardRule: config } : config;
+  const mapId = resolveMapId(obj?.mapId);
+  const extra = obj?.mapExtraLocations ?? 0;
+  if (mapId === "world" && extra === 0) {
+    const legacy = obj !== undefined && boardRule(obj) === "legacy";
+    return translate(
+      (legacy ? LEGACY_TILE_NAMES : TILE_NAMES)[index] ?? "",
+      (legacy ? LEGACY_ENGLISH_TILE_NAMES : ENGLISH_TILE_NAMES)[index] ?? "",
+      (legacy ? LEGACY_VIETNAMESE_TILE_NAMES : VIETNAMESE_TILE_NAMES)[index] ??
+        "",
+    );
+  }
+  const board = getBoard(config);
+  const tile = board[index];
+  if (!tile) return "";
+  switch (tile.kind) {
+    case "start":
+      return translate("Départ", "Start", "Xuất phát");
+    case "island":
+      return translate("Île paisible", "Island", "Đảo hoang");
+    case "championship":
+      return translate("Championnat", "Championship", "Giải đấu");
+    case "world-tour":
+      return translate("Tour du monde", "World tour", "Du lịch");
+    case "chance":
+      return translate("Surprise", "Chance", "Cơ hội");
+    case "tax":
+      return translate("Impôts", "Taxes", "Thuế");
+    case "resort": {
+      const resorts = board.filter(isResortTile);
+      const ordinal = resorts.findIndex((entry) => entry.index === index);
+      return resolvePlace(MAP_RESORTS[mapId][ordinal % 4]);
+    }
+    case "city": {
+      const cities = board.filter(isCityTile);
+      const ordinal = cities.findIndex((entry) => entry.index === index);
+      const pool = MAP_CITIES[mapId];
+      const pick =
+        cities.length <= 1
+          ? pool.length - 1
+          : Math.round((ordinal * (pool.length - 1)) / (cities.length - 1));
+      return resolvePlace(pool[pick]);
+    }
+  }
 }
 export function levelName(level: number): string {
   return translate(
@@ -299,6 +560,7 @@ export const TILE_ICONS: Record<string, string> = {
 };
 export function tileColor(index: number, config?: BoardConfig) {
   const tile = getBoard(config)[index];
+  if (!tile) return "#78bda7";
   return tile.kind === "city"
     ? REGION_COLORS[tile.country]
     : tile.kind === "resort"
@@ -313,11 +575,12 @@ export function tilePrice(
   state: Pick<PublicState, "config"> | null = null,
 ) {
   const tile = getBoard(state?.config)[index];
+  if (!tile) return null;
   return tile.kind === "city"
     ? getTileLandPrice(
         tile.index,
         state ? economyRule(state.config) : "reference",
-        state ? boardRule(state.config) : "country",
+        state?.config ?? "country",
       )
     : tile.kind === "resort"
       ? ECONOMY.resortPrice

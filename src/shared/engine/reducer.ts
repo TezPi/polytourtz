@@ -1,4 +1,4 @@
-import { ISLAND_TILE_INDEX } from "../board/index.js";
+import { getCornerTileIndex } from "../board/index.js";
 import type {
   GameEvent,
   GameState,
@@ -134,7 +134,7 @@ export function applyEvent(state: PublicState, event: GameEvent): PublicState {
     case "SentToIsland":
       return updatePlayer(state, event.seat, (player) => ({
         ...player,
-        position: ISLAND_TILE_INDEX,
+        position: getCornerTileIndex(state.config, "island"),
         onIsland: true,
         islandTurns: 0,
         travelPending: false,

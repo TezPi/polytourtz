@@ -323,7 +323,7 @@ describe("room debug server envelopes", () => {
           type: "events",
           fromSeq: 1,
           toSeq: 1,
-          events: [{ ...events[1], tile: 40 }],
+          events: [{ ...events[1], tile: 99 }],
         }),
       ),
     ).toThrow();

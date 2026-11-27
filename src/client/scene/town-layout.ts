@@ -1,6 +1,11 @@
-import { type BoardRule, getBoard } from "../../shared/board/index.js";
 import {
-  LAWN_HALF,
+  type BoardSelector,
+  getBoard,
+  getBoardLotsPerSide,
+} from "../../shared/board/index.js";
+import {
+  LOTS_PER_SIDE,
+  lawnHalfFor,
   sideFrame,
   tileCenter,
   tileRotation,
@@ -41,10 +46,38 @@ export const TOWN_MAX_HEIGHT = 0.68;
 /** Clearance kept between a shadowed strip of ground and the board road. */
 const ROAD_CLEARANCE = 0.03;
 
+export type TownFeature = {
+  readonly position: Vec2;
+  /** Half extent of the square that holds the whole feature. */
+  readonly radius: number;
+  readonly height: number;
+};
+
+export type TownMetrics = {
+  readonly lotsPerSide: number;
+  readonly lawnHalf: number;
+  readonly plazaRadius: number;
+  readonly ringRadius: number;
+  readonly ringHalfWidth: number;
+  readonly avenueStart: number;
+  readonly turningCircle: number;
+  readonly plotInset: number;
+  readonly ferrisWheel: TownFeature | null;
+  readonly carousel: TownFeature | null;
+  readonly pond: TownFeature | null;
+  readonly helipad: TownFeature | null;
+  readonly fountains: readonly TownFeature[];
+};
+
 /** Ground point `inset` in from a side's lawn edge, `along` its play axis. */
-export function lawnPoint(side: number, along: number, inset: number): Vec2 {
+export function lawnPoint(
+  side: number,
+  along: number,
+  inset: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): Vec2 {
   const frame = sideFrame(side);
-  const out = LAWN_HALF - inset;
+  const out = lawnHalfFor(lotsPerSide) - inset;
   return [
     frame.along[0] * along - frame.inward[0] * out,
     frame.along[1] * along - frame.inward[1] * out,
@@ -52,8 +85,12 @@ export function lawnPoint(side: number, along: number, inset: number): Vec2 {
 }
 
 /** Unit direction from the board center toward corner `corner` (0-3). */
-export function cornerDirection(corner: number): Vec2 {
-  const [x, z] = tileCenter(corner * 8);
+export function cornerDirection(
+  corner: number,
+  lotsPerSide = LOTS_PER_SIDE,
+): Vec2 {
+  const stride = lotsPerSide + 1;
+  const [x, z] = tileCenter(corner * stride, lotsPerSide);
   const length = Math.hypot(x, z);
   return [x / length, z / length];
 }
@@ -63,10 +100,82 @@ export function avenuePoint(
   corner: number,
   distance: number,
   across: number,
+  lotsPerSide = LOTS_PER_SIDE,
 ): Vec2 {
-  const [x, z] = cornerDirection(corner);
+  const [x, z] = cornerDirection(corner, lotsPerSide);
   // Left of the outward direction when seen from above: (-z, x) turned back.
   return [x * distance + z * across, z * distance - x * across];
+}
+
+export const FERRIS_WHEEL_RADIUS = 0.36;
+
+export function townMetrics(lotsPerSide = LOTS_PER_SIDE): TownMetrics {
+  const lawnHalf = lawnHalfFor(lotsPerSide);
+  const plazaScale =
+    lotsPerSide < LOTS_PER_SIDE ? Math.max(0.45, (lawnHalf - 0.85) / 1.93) : 1;
+  const plazaRadius = PLAZA_RADIUS * plazaScale;
+  const ringRadius = RING_RADIUS * plazaScale;
+  const ringHalfWidth = RING_HALF_WIDTH * plazaScale;
+  const avenueStart = ringRadius + ringHalfWidth;
+  const plotInset =
+    lotsPerSide < LOTS_PER_SIDE
+      ? Math.min(PLOT_INSET, lawnHalf - avenueStart - PLOT_DEPTH / 2 - 0.14)
+      : PLOT_INSET;
+  const turningCircle =
+    lotsPerSide === LOTS_PER_SIDE
+      ? TURNING_CIRCLE
+      : lawnHalf * Math.SQRT2 - (lotsPerSide < LOTS_PER_SIDE ? 0.5 : 0.63);
+  const attractionDist =
+    lotsPerSide === LOTS_PER_SIDE ? 2.86 : lawnHalf * Math.SQRT2 - 1.07;
+  const includeAttractions = lotsPerSide >= LOTS_PER_SIDE;
+  return {
+    lotsPerSide,
+    lawnHalf,
+    plazaRadius,
+    ringRadius,
+    ringHalfWidth,
+    avenueStart,
+    turningCircle,
+    plotInset,
+    ferrisWheel: includeAttractions
+      ? {
+          position: avenuePoint(0, attractionDist, 0.62, lotsPerSide),
+          radius: FERRIS_WHEEL_RADIUS * Math.SQRT1_2 + 0.04,
+          height: 0.88,
+        }
+      : null,
+    carousel: includeAttractions
+      ? {
+          position: avenuePoint(
+            0,
+            lotsPerSide === LOTS_PER_SIDE ? 2.84 : attractionDist - 0.02,
+            -0.62,
+            lotsPerSide,
+          ),
+          radius: 0.22,
+          height: 0.42,
+        }
+      : null,
+    pond: includeAttractions
+      ? {
+          position: avenuePoint(1, attractionDist, 0.66, lotsPerSide),
+          radius: 0.3,
+          height: 0.2,
+        }
+      : null,
+    helipad: includeAttractions
+      ? {
+          position: avenuePoint(3, attractionDist, -0.66, lotsPerSide),
+          radius: 0.24,
+          height: 0.2,
+        }
+      : null,
+    fountains: [0, 1, 2, 3].map((corner) => ({
+      position: avenuePoint(corner, turningCircle, 0, lotsPerSide),
+      radius: 0.07,
+      height: 0.2,
+    })),
+  };
 }
 
 export type TownPlot = {
@@ -77,42 +186,55 @@ export type TownPlot = {
   readonly rotation: number;
 };
 
-const PLOT_CACHE = new Map<BoardRule, readonly TownPlot[]>();
+const PLOT_CACHE = new Map<string, readonly TownPlot[]>();
 
-/** Each board gets a finite, evenly spaced street, including seven-property sides. */
-export function townPlots(rule: BoardRule = "country"): readonly TownPlot[] {
-  const cached = PLOT_CACHE.get(rule);
+/** Each board gets a finite, evenly spaced street, including larger custom sides. */
+export function townPlots(
+  selector: BoardSelector = "country",
+): readonly TownPlot[] {
+  const lotsPerSide = getBoardLotsPerSide(selector);
+  const board = getBoard(selector);
+  const key = `${typeof selector === "string" ? selector : `${selector.boardRule ?? "legacy"}:${selector.mapId ?? "world"}:${selector.mapExtraLocations ?? 0}`}`;
+  const cached = PLOT_CACHE.get(key);
   if (cached) return cached;
-  const board = getBoard(rule);
+  const metrics = townMetrics(lotsPerSide);
   const plots = [0, 1, 2, 3].flatMap((side) => {
     const properties = board.filter(
       (tile) =>
         (tile.kind === "city" || tile.kind === "resort") &&
-        tileSide(tile.index) === side,
+        tileSide(tile.index, lotsPerSide) === side,
     );
+    const maxSpan = Math.max(
+      0.8,
+      metrics.lawnHalf - metrics.plotInset - AVENUE_HALF_WIDTH - 0.36,
+    );
+    const pitch =
+      properties.length <= 1
+        ? 0.41
+        : Math.min(0.41, (maxSpan * 2) / (properties.length - 1));
     // A 0.41 pitch leaves room for the printed plot and its building envelope.
     // Six-plot legacy streets keep the gap around the central footpath.
     const along =
-      properties.length === 6
+      lotsPerSide === LOTS_PER_SIDE && properties.length === 6
         ? [-1.11, -0.69, -0.27, 0.27, 0.69, 1.11]
         : properties.map(
-            (_, order) => (order - (properties.length - 1) / 2) * 0.41,
+            (_, order) => (order - (properties.length - 1) / 2) * pitch,
           );
     return properties.map((tile, order) => ({
       tile: tile.index,
       side: side as TownPlot["side"],
-      position: lawnPoint(side, along[order], PLOT_INSET),
-      rotation: tileRotation(tile.index),
+      position: lawnPoint(side, along[order], metrics.plotInset, lotsPerSide),
+      rotation: tileRotation(tile.index, lotsPerSide),
     }));
   });
-  PLOT_CACHE.set(rule, plots);
+  PLOT_CACHE.set(key, plots);
   return plots;
 }
 
 export const TOWN_PLOTS = townPlots();
 
-export function townPlot(tile: number, rule: BoardRule = "country") {
-  return townPlots(rule).find((plot) => plot.tile === tile);
+export function townPlot(tile: number, selector: BoardSelector = "country") {
+  return townPlots(selector).find((plot) => plot.tile === tile);
 }
 
 /**
@@ -121,117 +243,160 @@ export function townPlot(tile: number, rule: BoardRule = "country") {
  * ground behind it, so h may not exceed the distance to the lawn edge
  * measured along both back axes.
  */
-export function visibilityCap(x: number, z: number, radius: number) {
-  return Math.min(x, z) - radius + LAWN_HALF - ROAD_CLEARANCE;
+export function visibilityCap(
+  x: number,
+  z: number,
+  radius: number,
+  lotsPerSide = LOTS_PER_SIDE,
+) {
+  return Math.min(x, z) - radius + lawnHalfFor(lotsPerSide) - ROAD_CLEARANCE;
 }
 
-export type TownFeature = {
-  readonly position: Vec2;
-  /** Half extent of the square that holds the whole feature. */
-  readonly radius: number;
-  readonly height: number;
-};
-
-// Positive `across` is screen right on the avenue to Start. The fairground
-// flanks that avenue: a big wheel on the right, a carousel on the left. A
-// sailing pond near the island and a helipad near the world tour sit on the
-// front side of their avenues, where nothing behind them needs to be seen.
-// Every turning circle holds a fountain.
-// The wheel turns square to the camera, so its rim runs along the screen
-// diagonal and its square envelope is narrower than the wheel.
-export const FERRIS_WHEEL_RADIUS = 0.36;
-export const FERRIS_WHEEL: TownFeature = {
-  position: avenuePoint(0, 2.86, 0.62),
-  radius: FERRIS_WHEEL_RADIUS * Math.SQRT1_2 + 0.04,
-  height: 0.88,
-};
-export const CAROUSEL: TownFeature = {
-  position: avenuePoint(0, 2.84, -0.62),
-  radius: 0.22,
-  height: 0.42,
-};
-export const POND: TownFeature = {
-  position: avenuePoint(1, 2.86, 0.66),
-  radius: 0.3,
-  height: 0.2,
-};
-export const HELIPAD: TownFeature = {
-  position: avenuePoint(3, 2.86, -0.66),
-  radius: 0.24,
-  height: 0.2,
-};
-export const FOUNTAINS: readonly TownFeature[] = [0, 1, 2, 3].map((corner) => ({
-  position: avenuePoint(corner, TURNING_CIRCLE, 0),
-  radius: 0.07,
-  height: 0.2,
-}));
+const DEFAULT_METRICS = townMetrics();
+export const FERRIS_WHEEL: TownFeature =
+  DEFAULT_METRICS.ferrisWheel as TownFeature;
+export const CAROUSEL: TownFeature = DEFAULT_METRICS.carousel as TownFeature;
+export const POND: TownFeature = DEFAULT_METRICS.pond as TownFeature;
+export const HELIPAD: TownFeature = DEFAULT_METRICS.helipad as TownFeature;
+export const FOUNTAINS: readonly TownFeature[] = DEFAULT_METRICS.fountains;
 
 /** A tree, sized to stay under the visibility cap where it grows. */
 export type TownTree = { readonly position: Vec2; readonly height: number };
 export const TREE_RADIUS = 0.11;
 const TREE_HEIGHT = 0.36;
 
-function tree(position: Vec2): TownTree {
+function tree(position: Vec2, lotsPerSide = LOTS_PER_SIDE): TownTree {
   const [x, z] = position;
   return {
     position,
-    height: Math.min(TREE_HEIGHT, visibilityCap(x, z, TREE_RADIUS)),
+    height: Math.min(
+      TREE_HEIGHT,
+      visibilityCap(x, z, TREE_RADIUS, lotsPerSide),
+    ),
   };
 }
 
-export const TOWN_TREES: readonly TownTree[] = [
-  // Avenue rows: one pair before the plots, one pair beyond them.
-  ...[0, 1, 2, 3].flatMap((corner) =>
-    [1.86, 2.72].flatMap((distance) =>
-      [-1, 1].map((left) => tree(avenuePoint(corner, distance, left * 0.32))),
+function clearOfAvenueAndPlots(
+  candidate: TownTree,
+  metrics: TownMetrics,
+  plots: readonly TownPlot[],
+): boolean {
+  if (candidate.height < 0.16) return false;
+  const features = [
+    metrics.ferrisWheel,
+    metrics.carousel,
+    metrics.pond,
+    metrics.helipad,
+    ...metrics.fountains,
+  ].filter((item): item is TownFeature => item !== null);
+  for (const feature of features) {
+    if (
+      Math.max(
+        Math.abs(feature.position[0] - candidate.position[0]),
+        Math.abs(feature.position[1] - candidate.position[1]),
+      ) <=
+      feature.radius + TREE_RADIUS + 0.02
+    )
+      return false;
+  }
+  const plotHalfAlong = PLOT_WIDTH / 2;
+  const plotHalfDepth = PLOT_DEPTH / 2;
+  for (const plot of plots) {
+    const alongX = plot.side % 2 === 0;
+    const halfX = (alongX ? plotHalfAlong : plotHalfDepth) + TREE_RADIUS + 0.02;
+    const halfZ = (alongX ? plotHalfDepth : plotHalfAlong) + TREE_RADIUS + 0.02;
+    if (
+      Math.abs(plot.position[0] - candidate.position[0]) < halfX &&
+      Math.abs(plot.position[1] - candidate.position[1]) < halfZ
+    )
+      return false;
+  }
+  return true;
+}
+
+export function townTrees(
+  selector: BoardSelector = "country",
+): readonly TownTree[] {
+  const lotsPerSide = getBoardLotsPerSide(selector);
+  const metrics = townMetrics(lotsPerSide);
+  const plots = townPlots(selector);
+  const avenueDists =
+    lotsPerSide === LOTS_PER_SIDE
+      ? [1.86, 2.72]
+      : lotsPerSide < LOTS_PER_SIDE
+        ? []
+        : [metrics.avenueStart + 0.24, metrics.turningCircle - 0.58];
+  const parkAlongs =
+    lotsPerSide === LOTS_PER_SIDE
+      ? [-0.92, -0.48, 0.48, 0.92]
+      : lotsPerSide < LOTS_PER_SIDE
+        ? [-0.45, 0.45]
+        : [-1.4, -0.7, 0.7, 1.4];
+  return [
+    ...[0, 1, 2, 3].flatMap((corner) =>
+      avenueDists.flatMap((distance) =>
+        [-1, 1].map((left) =>
+          tree(
+            avenuePoint(corner, distance, left * 0.32, lotsPerSide),
+            lotsPerSide,
+          ),
+        ),
+      ),
     ),
-  ),
-  // Park strips between each street of plots and the board road.
-  ...[0, 1, 2, 3].flatMap((side) =>
-    [-0.92, -0.48, 0.48, 0.92].map((along) =>
-      tree(lawnPoint(side, along, 0.4)),
+    ...[0, 1, 2, 3].flatMap((side) =>
+      parkAlongs.map((along) =>
+        tree(lawnPoint(side, along, 0.4, lotsPerSide), lotsPerSide),
+      ),
     ),
-  ),
-].filter(
-  (candidate) =>
-    candidate.height >= 0.16 &&
-    [FERRIS_WHEEL, CAROUSEL, POND, HELIPAD].every(
-      (feature) =>
-        Math.max(
-          Math.abs(feature.position[0] - candidate.position[0]),
-          Math.abs(feature.position[1] - candidate.position[1]),
-        ) >
-        feature.radius + TREE_RADIUS + 0.02,
-    ),
-);
+  ].filter((candidate) => clearOfAvenueAndPlots(candidate, metrics, plots));
+}
+
+export const TOWN_TREES: readonly TownTree[] = townTrees();
 
 /**
  * The cars' closed circuit, sampled every `spacing` units: in along an
  * avenue, a quarter of the roundabout, out along the next avenue, around its
  * turning circle and back in. One lap visits all four avenues.
  */
-export function townCircuit(spacing = 0.02): readonly Vec2[] {
+export function townCircuit(
+  spacing = 0.02,
+  lotsPerSide = LOTS_PER_SIDE,
+): readonly Vec2[] {
+  const metrics = townMetrics(lotsPerSide);
   const polyline: Vec2[] = [];
   const steps = 18;
-  const [startX, startZ] = cornerDirection(0);
+  const [startX, startZ] = cornerDirection(0, lotsPerSide);
   let angle = Math.atan2(startZ, startX);
   for (let leg = 0; leg < 4; leg++) {
-    const corner = cornerAt(angle);
-    const next = cornerAt(angle - Math.PI / 2);
+    const corner = cornerAt(angle, lotsPerSide);
+    const next = cornerAt(angle - Math.PI / 2, lotsPerSide);
     // Traffic keeps right: inbound cars drive left of the outward axis.
     polyline.push(
-      avenuePoint(corner, TURNING_CIRCLE - 0.12, LANE_OFFSET),
-      avenuePoint(corner, AVENUE_START + 0.06, LANE_OFFSET),
+      avenuePoint(
+        corner,
+        metrics.turningCircle - 0.12,
+        LANE_OFFSET,
+        lotsPerSide,
+      ),
+      avenuePoint(corner, metrics.avenueStart + 0.06, LANE_OFFSET, lotsPerSide),
     );
     // Counter-clockwise from above: the angle decreases.
-    const offset = LANE_OFFSET / RING_RADIUS;
+    const offset = LANE_OFFSET / metrics.ringRadius;
     for (let step = 0; step <= steps; step++) {
       const a = angle - offset - ((Math.PI / 2 - offset * 2) * step) / steps;
-      polyline.push([Math.cos(a) * RING_RADIUS, Math.sin(a) * RING_RADIUS]);
+      polyline.push([
+        Math.cos(a) * metrics.ringRadius,
+        Math.sin(a) * metrics.ringRadius,
+      ]);
     }
     polyline.push(
-      avenuePoint(next, AVENUE_START + 0.06, -LANE_OFFSET),
-      avenuePoint(next, TURNING_CIRCLE - 0.12, -LANE_OFFSET),
+      avenuePoint(next, metrics.avenueStart + 0.06, -LANE_OFFSET, lotsPerSide),
+      avenuePoint(
+        next,
+        metrics.turningCircle - 0.12,
+        -LANE_OFFSET,
+        lotsPerSide,
+      ),
     );
     // Half way around the fountain, from the outbound lane to the inbound one.
     for (let step = 0; step <= steps; step++) {
@@ -239,8 +404,9 @@ export function townCircuit(spacing = 0.02): readonly Vec2[] {
       polyline.push(
         avenuePoint(
           next,
-          TURNING_CIRCLE + Math.cos(turn) * TURNING_RADIUS,
+          metrics.turningCircle + Math.cos(turn) * TURNING_RADIUS,
           Math.sin(turn) * TURNING_RADIUS,
+          lotsPerSide,
         ),
       );
     }
@@ -249,11 +415,11 @@ export function townCircuit(spacing = 0.02): readonly Vec2[] {
   return resample(smooth(polyline, 3), spacing);
 }
 
-function cornerAt(angle: number) {
+function cornerAt(angle: number, lotsPerSide: number) {
   let best = 0;
   let distance = Number.POSITIVE_INFINITY;
   for (let corner = 0; corner < 4; corner++) {
-    const [x, z] = cornerDirection(corner);
+    const [x, z] = cornerDirection(corner, lotsPerSide);
     const d = Math.hypot(x - Math.cos(angle), z - Math.sin(angle));
     if (d < distance) {
       best = corner;
