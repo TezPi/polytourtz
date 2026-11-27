@@ -1,6 +1,7 @@
 import type { Seat } from "./types.js";
 
 export const CHARACTER_SKINS = [
+  "chibi",
   "classic",
   "tycoon",
   "astronaut",
@@ -67,7 +68,7 @@ export type PlayerCosmetics = {
 };
 
 export const DEFAULT_COSMETICS: PlayerCosmetics = {
-  skin: "classic",
+  skin: "chibi",
   tone: "seat",
   hat: "none",
   eyewear: "none",

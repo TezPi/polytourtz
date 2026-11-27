@@ -1376,12 +1376,14 @@ function Pawn({
   cosmetics,
   control,
   active,
+  animated,
   groupRef,
 }: {
   seat: Seat;
   cosmetics?: PlayerCosmetics | null;
   control?: "human" | "bot" | null;
   active: boolean;
+  animated: boolean;
   groupRef: (group: THREE.Group | null) => void;
 }) {
   return (
@@ -1392,6 +1394,7 @@ function Pawn({
           cosmetics={cosmetics}
           control={control}
           active={active}
+          animated={animated}
         />
       </group>
     </group>
@@ -2681,6 +2684,7 @@ function SceneContent(props: BoardProps) {
                 state?.status === "active" &&
                 (state.pending?.seat ?? state.activeSeat) === seat
               }
+              animated={ambient}
               groupRef={(group) => {
                 pawns.current[seat] = group;
               }}

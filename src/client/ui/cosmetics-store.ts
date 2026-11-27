@@ -36,6 +36,8 @@ export function resolveBodyColor(
   const tone = cosmetics?.tone ?? "seat";
   if (tone !== "seat") return OUTFIT_TONE_HEX[tone];
   switch (cosmetics?.skin) {
+    case "chibi":
+      return "#ebe9e4";
     case "robot":
       return "#8ea0ae";
     case "astronaut":
@@ -57,6 +59,8 @@ export function resolveBodyColor(
 
 export function skinLabel(skin: CharacterSkin): string {
   switch (skin) {
+    case "chibi":
+      return translate("Chibi 3D", "Chibi 3D", "Chibi 3D");
     case "classic":
       return translate("Classique", "Classic", "Cổ điển");
     case "tycoon":

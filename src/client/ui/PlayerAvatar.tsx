@@ -28,13 +28,17 @@ function AvatarVector({
       ? "#b8c7d4"
       : cosmetics.skin === "cat"
         ? "#ffd9a8"
-        : "#f5c289";
+        : cosmetics.skin === "chibi"
+          ? "#f7c7a3"
+          : "#f5c289";
   const armColor =
-    cosmetics.skin === "astronaut"
-      ? "#edf2f7"
-      : cosmetics.skin === "robot"
-        ? "#93a5b3"
-        : bodyColor;
+    cosmetics.skin === "chibi"
+      ? "#f7c7a3"
+      : cosmetics.skin === "astronaut"
+        ? "#edf2f7"
+        : cosmetics.skin === "robot"
+          ? "#93a5b3"
+          : bodyColor;
 
   return (
     <svg
@@ -176,8 +180,21 @@ function AvatarVector({
         </g>
       )}
 
+      {/* Navy hem on Chibi shorts */}
+      {cosmetics.skin === "chibi" && (
+        <rect x="13" y="61" width="38" height="7" rx="2" fill="#2d4567" />
+      )}
+
       {/* Pedestal trim bar at bottom */}
       <rect x="13" y="66" width="38" height="5" rx="2.5" fill={seatColor} />
+
+      {/* Ears & Blush for Chibi */}
+      {cosmetics.skin === "chibi" && (
+        <g>
+          <circle cx="16" cy="29" r="3.4" fill="#eec09a" />
+          <circle cx="48" cy="29" r="3.4" fill="#eec09a" />
+        </g>
+      )}
 
       {/* Head */}
       <rect
@@ -188,6 +205,39 @@ function AvatarVector({
         rx={cosmetics.skin === "robot" ? 6 : 12}
         fill={skinColor}
       />
+
+      {cosmetics.skin === "chibi" && (
+        <g>
+          <ellipse
+            cx="22.5"
+            cy="32.5"
+            rx="3.2"
+            ry="1.8"
+            fill="#f39a86"
+            opacity="0.55"
+          />
+          <ellipse
+            cx="41.5"
+            cy="32.5"
+            rx="3.2"
+            ry="1.8"
+            fill="#f39a86"
+            opacity="0.55"
+          />
+          <path
+            d="M23 24.5 L28 24.2"
+            stroke="#2f3238"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+          />
+          <path
+            d="M36 24.2 L41 24.5"
+            stroke="#2f3238"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+          />
+        </g>
+      )}
 
       {/* Ninja mask */}
       {cosmetics.skin === "ninja" && (
@@ -288,7 +338,13 @@ function AvatarVector({
         </g>
       )}
 
-      {/* Default hat per skin when hat === "none" */}
+      {/* Default hat/hair per skin when hat === "none" */}
+      {cosmetics.skin === "chibi" && (
+        <path
+          d="M15 26 C14 14, 24 8, 33 9 C43 9, 50 16, 49 26 L46 25 C43 19, 39 20, 36 23 L33 17 L29 24 C25 20, 20 20, 18 25 Z"
+          fill="#2d3036"
+        />
+      )}
       {cosmetics.hat === "none" && cosmetics.skin === "classic" && (
         <path d="M16 21 C16 11, 48 11, 48 21 Z" fill={seatColor} />
       )}

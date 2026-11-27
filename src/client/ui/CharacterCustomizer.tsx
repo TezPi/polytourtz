@@ -70,7 +70,7 @@ function TurntablePawn({
   });
   return (
     <group ref={group} position={[0, -0.34, 0]}>
-      <PawnModel seat={seat} cosmetics={cosmetics} showPedestal />
+      <PawnModel seat={seat} cosmetics={cosmetics} showPedestal animated />
     </group>
   );
 }

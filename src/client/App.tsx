@@ -67,7 +67,6 @@ import {
 import { botDifficultyName } from "./ui/bot-display.js";
 import CardMoment from "./ui/CardMoment.js";
 import Changelog from "./ui/Changelog.js";
-import CharacterCustomizerDialog from "./ui/CharacterCustomizer.js";
 import CityCard from "./ui/CityCard.js";
 import { cardName } from "./ui/chance-display.js";
 import {
@@ -78,7 +77,6 @@ import {
   skinLabel,
   useOwnCosmetics,
 } from "./ui/cosmetics-store.js";
-import DecisionPanel from "./ui/DecisionPanel.js";
 import DiceExplanation from "./ui/DiceExplanation.js";
 import HeldCardHand from "./ui/HeldCardHand.js";
 import Icon from "./ui/Icon.js";
@@ -102,6 +100,10 @@ import StreamerToggle from "./ui/StreamerToggle.js";
 import "./App.css";
 
 const BoardScene = lazy(() => import("./scene/BoardScene.js"));
+const CharacterCustomizerDialog = lazy(
+  () => import("./ui/CharacterCustomizer.js"),
+);
+const DecisionPanel = lazy(() => import("./ui/DecisionPanel.js"));
 const DEFAULT_CONFIG = RoomConfigSchema.parse({});
 
 async function copyText(text: string): Promise<boolean> {
@@ -1770,32 +1772,34 @@ function MatchView({
                 />
               </div>
             )}
-            <DecisionPanel
-              state={serverState ?? game}
-              seat={controlSeat}
-              playerName={
-                sharedScreen && controlSeat !== null
-                  ? authoritative.players.find(
-                      (player) => player.seat === controlSeat,
-                    )?.name
-                  : undefined
-              }
-              act={(action) =>
-                room.act(
-                  action,
-                  controlSeat !== null && controlSeat !== own
-                    ? controlSeat
-                    : undefined,
-                )
-              }
-              blocked={saleBlocked}
-              randomness={room.randomness}
-              obscured={pauseOpen || pausedAt !== null}
-              selected={decisionSelected}
-              onSelect={salePending ? inspectTile : onSelect}
-              picked={picked}
-              onPick={choosePick}
-            />
+            <Suspense fallback={null}>
+              <DecisionPanel
+                state={serverState ?? game}
+                seat={controlSeat}
+                playerName={
+                  sharedScreen && controlSeat !== null
+                    ? authoritative.players.find(
+                        (player) => player.seat === controlSeat,
+                      )?.name
+                    : undefined
+                }
+                act={(action) =>
+                  room.act(
+                    action,
+                    controlSeat !== null && controlSeat !== own
+                      ? controlSeat
+                      : undefined,
+                  )
+                }
+                blocked={saleBlocked}
+                randomness={room.randomness}
+                obscured={pauseOpen || pausedAt !== null}
+                selected={decisionSelected}
+                onSelect={salePending ? inspectTile : onSelect}
+                picked={picked}
+                onPick={choosePick}
+              />
+            </Suspense>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2459,17 +2463,21 @@ function App() {
               </div>
             )}
           </div>
-          <CharacterCustomizerDialog
-            open={homeCustomizerOpen}
-            seat={invitationCode !== null ? 1 : 0}
-            playerName={
-              name.trim() ||
-              t("Votre pion", "Your character", "Nhân vật của bạn")
-            }
-            value={ownCosmetics}
-            onClose={() => setHomeCustomizerOpen(false)}
-            onApply={(next) => saveOwnCosmetics(next)}
-          />
+          {homeCustomizerOpen && (
+            <Suspense fallback={null}>
+              <CharacterCustomizerDialog
+                open={homeCustomizerOpen}
+                seat={invitationCode !== null ? 1 : 0}
+                playerName={
+                  name.trim() ||
+                  t("Votre pion", "Your character", "Nhân vật của bạn")
+                }
+                value={ownCosmetics}
+                onClose={() => setHomeCustomizerOpen(false)}
+                onApply={(next) => saveOwnCosmetics(next)}
+              />
+            </Suspense>
+          )}
         </section>
       ) : !game ? (
         <section className="room-lobby">

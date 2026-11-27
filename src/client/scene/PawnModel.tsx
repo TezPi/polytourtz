@@ -2,6 +2,7 @@ import type { PlayerCosmetics, Seat } from "../../shared/engine/index.js";
 import { resolveCosmetics } from "../../shared/engine/index.js";
 import { PLAYER_COLORS } from "../ui/board-display.js";
 import { resolveBodyColor } from "../ui/cosmetics-store.js";
+import ChibiCharacter from "./ChibiCharacter.js";
 
 function DefaultHat({
   seat,
@@ -171,7 +172,7 @@ function DefaultHat({
   );
 }
 
-function CustomHat({
+export function CustomHat({
   hat,
   seatColor,
 }: {
@@ -329,7 +330,7 @@ function CustomHat({
   }
 }
 
-function Eyewear({ eyewear }: { eyewear: PlayerCosmetics["eyewear"] }) {
+export function Eyewear({ eyewear }: { eyewear: PlayerCosmetics["eyewear"] }) {
   switch (eyewear) {
     case "shades":
       return (
@@ -422,7 +423,7 @@ function Eyewear({ eyewear }: { eyewear: PlayerCosmetics["eyewear"] }) {
   }
 }
 
-function Gear({
+export function Gear({
   gear,
   seatColor,
 }: {
@@ -543,12 +544,14 @@ export default function PawnModel({
   control,
   showPedestal = true,
   active = false,
+  animated = false,
 }: {
   seat: Seat;
   cosmetics?: PlayerCosmetics | null;
   control?: "human" | "bot" | null;
   showPedestal?: boolean;
   active?: boolean;
+  animated?: boolean;
 }) {
   const cosmetics = resolveCosmetics(seat, control, rawCosmetics);
   const seatColor = PLAYER_COLORS[seat];
@@ -565,6 +568,166 @@ export default function PawnModel({
       : cosmetics.skin === "robot"
         ? "#93a5b3"
         : bodyColor;
+
+  const primitiveBody = (
+    <group>
+      {[-1, 1].map((side) => (
+        <group key={side}>
+          <mesh position={[side * 0.065, 0.12, 0.025]} castShadow>
+            <boxGeometry args={[0.085, 0.11, 0.12]} />
+            <meshStandardMaterial
+              color={cosmetics.skin === "robot" ? "#4e6272" : "#294758"}
+            />
+          </mesh>
+          <mesh
+            position={[side * 0.17, 0.29, 0]}
+            rotation={[0, 0, side * 0.27]}
+            castShadow
+          >
+            <capsuleGeometry args={[0.05, 0.16, 3, 8]} />
+            <meshStandardMaterial
+              color={armColor}
+              metalness={cosmetics.skin === "robot" ? 0.35 : 0}
+              roughness={cosmetics.skin === "robot" ? 0.45 : 0.7}
+            />
+          </mesh>
+          <mesh position={[side * 0.19, 0.19, 0.014]}>
+            <sphereGeometry args={[0.053, 8, 6]} />
+            <meshStandardMaterial color={skinColor} />
+          </mesh>
+        </group>
+      ))}
+      {/* Torso */}
+      <mesh position={[0, 0.28, 0]} castShadow>
+        {cosmetics.skin === "robot" ? (
+          <boxGeometry args={[0.25, 0.26, 0.22]} />
+        ) : (
+          <capsuleGeometry args={[0.135, 0.13, 4, 10]} />
+        )}
+        <meshStandardMaterial
+          color={bodyColor}
+          metalness={cosmetics.skin === "robot" ? 0.38 : 0}
+          roughness={cosmetics.skin === "robot" ? 0.4 : 0.75}
+        />
+      </mesh>
+
+      {/* Skin chest details */}
+      {cosmetics.skin === "tycoon" && (
+        <group>
+          <mesh position={[0, 0.295, 0.125]}>
+            <boxGeometry args={[0.08, 0.16, 0.02]} />
+            <meshStandardMaterial color="#fffaf2" />
+          </mesh>
+          <mesh position={[0, 0.29, 0.136]}>
+            <boxGeometry args={[0.028, 0.13, 0.012]} />
+            <meshStandardMaterial color={seatColor} />
+          </mesh>
+        </group>
+      )}
+      {cosmetics.skin === "astronaut" && (
+        <group>
+          <mesh position={[0, 0.29, 0.13]}>
+            <boxGeometry args={[0.11, 0.085, 0.022]} />
+            <meshStandardMaterial color={seatColor} />
+          </mesh>
+          {cosmetics.gear === "none" && (
+            <mesh position={[0, 0.29, -0.14]} castShadow>
+              <boxGeometry args={[0.16, 0.19, 0.08]} />
+              <meshStandardMaterial color="#d9e3ec" roughness={0.6} />
+            </mesh>
+          )}
+        </group>
+      )}
+      {cosmetics.skin === "robot" && (
+        <mesh position={[0, 0.29, 0.114]}>
+          <cylinderGeometry args={[0.042, 0.042, 0.016, 12]} />
+          <meshBasicMaterial color={seatColor} toneMapped={false} />
+        </mesh>
+      )}
+      {cosmetics.skin === "pirate" && (
+        <mesh position={[0, 0.275, 0.13]} rotation={[0, 0, -0.6]}>
+          <boxGeometry args={[0.042, 0.26, 0.022]} />
+          <meshStandardMaterial color="#f4bd3c" roughness={0.45} />
+        </mesh>
+      )}
+      {cosmetics.skin === "royal" && (
+        <mesh position={[0, 0.365, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.12, 0.026, 8, 16]} />
+          <meshStandardMaterial color="#fffaf0" roughness={0.85} />
+        </mesh>
+      )}
+      {cosmetics.skin === "cat" && (
+        <mesh position={[0, 0.355, 0.132]}>
+          <sphereGeometry args={[0.028, 8, 6]} />
+          <meshStandardMaterial
+            color="#f4bd3c"
+            metalness={0.5}
+            roughness={0.3}
+          />
+        </mesh>
+      )}
+
+      {/* Head */}
+      <mesh position={[0, 0.48, 0]} castShadow>
+        {cosmetics.skin === "robot" ? (
+          <boxGeometry args={[0.25, 0.22, 0.23]} />
+        ) : (
+          <sphereGeometry args={[0.155, 12, 9]} />
+        )}
+        <meshStandardMaterial
+          color={skinColor}
+          metalness={cosmetics.skin === "robot" ? 0.35 : 0}
+          roughness={cosmetics.skin === "robot" ? 0.45 : 0.8}
+        />
+      </mesh>
+
+      {/* Ninja lower face mask */}
+      {cosmetics.skin === "ninja" && (
+        <mesh position={[0, 0.44, 0.025]}>
+          <cylinderGeometry args={[0.145, 0.132, 0.095, 14]} />
+          <meshStandardMaterial color="#253143" roughness={0.8} />
+        </mesh>
+      )}
+
+      {/* Eyes */}
+      {[-1, 1].map((side) => (
+        <mesh
+          key={side}
+          position={[
+            side * 0.054,
+            0.495,
+            cosmetics.skin === "robot" ? 0.12 : 0.14,
+          ]}
+        >
+          <sphereGeometry args={[0.018, 6, 5]} />
+          <meshBasicMaterial
+            color={cosmetics.skin === "robot" ? "#5cf0ff" : "#173b45"}
+          />
+        </mesh>
+      ))}
+
+      {/* Mouth */}
+      {cosmetics.skin !== "ninja" && cosmetics.skin !== "robot" && (
+        <mesh position={[0, 0.443, 0.149]} rotation={[0, 0, Math.PI]}>
+          <torusGeometry args={[0.037, 0.007, 4, 8, Math.PI]} />
+          <meshBasicMaterial color="#944f35" />
+        </mesh>
+      )}
+
+      {/* Hat slot */}
+      {cosmetics.hat === "none" ? (
+        <DefaultHat seat={seat} skin={cosmetics.skin} seatColor={seatColor} />
+      ) : (
+        <CustomHat hat={cosmetics.hat} seatColor={seatColor} />
+      )}
+
+      {/* Eyewear slot */}
+      <Eyewear eyewear={cosmetics.eyewear} />
+
+      {/* Back / neck gear slot */}
+      <Gear gear={cosmetics.gear} seatColor={seatColor} />
+    </group>
+  );
 
   return (
     <group>
@@ -587,161 +750,19 @@ export default function PawnModel({
             </mesh>
           </>
         )}
-        {[-1, 1].map((side) => (
-          <group key={side}>
-            <mesh position={[side * 0.065, 0.12, 0.025]} castShadow>
-              <boxGeometry args={[0.085, 0.11, 0.12]} />
-              <meshStandardMaterial
-                color={cosmetics.skin === "robot" ? "#4e6272" : "#294758"}
-              />
-            </mesh>
-            <mesh
-              position={[side * 0.17, 0.29, 0]}
-              rotation={[0, 0, side * 0.27]}
-              castShadow
-            >
-              <capsuleGeometry args={[0.05, 0.16, 3, 8]} />
-              <meshStandardMaterial
-                color={armColor}
-                metalness={cosmetics.skin === "robot" ? 0.35 : 0}
-                roughness={cosmetics.skin === "robot" ? 0.45 : 0.7}
-              />
-            </mesh>
-            <mesh position={[side * 0.19, 0.19, 0.014]}>
-              <sphereGeometry args={[0.053, 8, 6]} />
-              <meshStandardMaterial color={skinColor} />
-            </mesh>
-          </group>
-        ))}
-        {/* Torso */}
-        <mesh position={[0, 0.28, 0]} castShadow>
-          {cosmetics.skin === "robot" ? (
-            <boxGeometry args={[0.25, 0.26, 0.22]} />
-          ) : (
-            <capsuleGeometry args={[0.135, 0.13, 4, 10]} />
-          )}
-          <meshStandardMaterial
-            color={bodyColor}
-            metalness={cosmetics.skin === "robot" ? 0.38 : 0}
-            roughness={cosmetics.skin === "robot" ? 0.4 : 0.75}
+        {cosmetics.skin === "chibi" ? (
+          <ChibiCharacter
+            seat={seat}
+            cosmetics={cosmetics}
+            seatColor={seatColor}
+            showPedestal={showPedestal}
+            active={active}
+            animated={animated}
+            fallback={primitiveBody}
           />
-        </mesh>
-
-        {/* Skin chest details */}
-        {cosmetics.skin === "tycoon" && (
-          <group>
-            <mesh position={[0, 0.295, 0.125]}>
-              <boxGeometry args={[0.08, 0.16, 0.02]} />
-              <meshStandardMaterial color="#fffaf2" />
-            </mesh>
-            <mesh position={[0, 0.29, 0.136]}>
-              <boxGeometry args={[0.028, 0.13, 0.012]} />
-              <meshStandardMaterial color={seatColor} />
-            </mesh>
-          </group>
-        )}
-        {cosmetics.skin === "astronaut" && (
-          <group>
-            <mesh position={[0, 0.29, 0.13]}>
-              <boxGeometry args={[0.11, 0.085, 0.022]} />
-              <meshStandardMaterial color={seatColor} />
-            </mesh>
-            {cosmetics.gear === "none" && (
-              <mesh position={[0, 0.29, -0.14]} castShadow>
-                <boxGeometry args={[0.16, 0.19, 0.08]} />
-                <meshStandardMaterial color="#d9e3ec" roughness={0.6} />
-              </mesh>
-            )}
-          </group>
-        )}
-        {cosmetics.skin === "robot" && (
-          <mesh position={[0, 0.29, 0.114]}>
-            <cylinderGeometry args={[0.042, 0.042, 0.016, 12]} />
-            <meshBasicMaterial color={seatColor} toneMapped={false} />
-          </mesh>
-        )}
-        {cosmetics.skin === "pirate" && (
-          <mesh position={[0, 0.275, 0.13]} rotation={[0, 0, -0.6]}>
-            <boxGeometry args={[0.042, 0.26, 0.022]} />
-            <meshStandardMaterial color="#f4bd3c" roughness={0.45} />
-          </mesh>
-        )}
-        {cosmetics.skin === "royal" && (
-          <mesh position={[0, 0.365, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.12, 0.026, 8, 16]} />
-            <meshStandardMaterial color="#fffaf0" roughness={0.85} />
-          </mesh>
-        )}
-        {cosmetics.skin === "cat" && (
-          <mesh position={[0, 0.355, 0.132]}>
-            <sphereGeometry args={[0.028, 8, 6]} />
-            <meshStandardMaterial
-              color="#f4bd3c"
-              metalness={0.5}
-              roughness={0.3}
-            />
-          </mesh>
-        )}
-
-        {/* Head */}
-        <mesh position={[0, 0.48, 0]} castShadow>
-          {cosmetics.skin === "robot" ? (
-            <boxGeometry args={[0.25, 0.22, 0.23]} />
-          ) : (
-            <sphereGeometry args={[0.155, 12, 9]} />
-          )}
-          <meshStandardMaterial
-            color={skinColor}
-            metalness={cosmetics.skin === "robot" ? 0.35 : 0}
-            roughness={cosmetics.skin === "robot" ? 0.45 : 0.8}
-          />
-        </mesh>
-
-        {/* Ninja lower face mask */}
-        {cosmetics.skin === "ninja" && (
-          <mesh position={[0, 0.44, 0.025]}>
-            <cylinderGeometry args={[0.145, 0.132, 0.095, 14]} />
-            <meshStandardMaterial color="#253143" roughness={0.8} />
-          </mesh>
-        )}
-
-        {/* Eyes */}
-        {[-1, 1].map((side) => (
-          <mesh
-            key={side}
-            position={[
-              side * 0.054,
-              0.495,
-              cosmetics.skin === "robot" ? 0.12 : 0.14,
-            ]}
-          >
-            <sphereGeometry args={[0.018, 6, 5]} />
-            <meshBasicMaterial
-              color={cosmetics.skin === "robot" ? "#5cf0ff" : "#173b45"}
-            />
-          </mesh>
-        ))}
-
-        {/* Mouth */}
-        {cosmetics.skin !== "ninja" && cosmetics.skin !== "robot" && (
-          <mesh position={[0, 0.443, 0.149]} rotation={[0, 0, Math.PI]}>
-            <torusGeometry args={[0.037, 0.007, 4, 8, Math.PI]} />
-            <meshBasicMaterial color="#944f35" />
-          </mesh>
-        )}
-
-        {/* Hat slot */}
-        {cosmetics.hat === "none" ? (
-          <DefaultHat seat={seat} skin={cosmetics.skin} seatColor={seatColor} />
         ) : (
-          <CustomHat hat={cosmetics.hat} seatColor={seatColor} />
+          primitiveBody
         )}
-
-        {/* Eyewear slot */}
-        <Eyewear eyewear={cosmetics.eyewear} />
-
-        {/* Back / neck gear slot */}
-        <Gear gear={cosmetics.gear} seatColor={seatColor} />
       </group>
     </group>
   );

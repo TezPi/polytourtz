@@ -15,7 +15,7 @@
       "destination": "/api/index?__path=/api/$1"
     },
     {
-      "source": "/((?!api/|assets/|icons/).*)",
+      "source": "/((?!api/|assets/|icons/|models/).*)",
       "destination": "/index.html"
     }
   ]

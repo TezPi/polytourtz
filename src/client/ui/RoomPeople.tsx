@@ -1,5 +1,5 @@
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   type BotDifficulty,
   type PlayerCosmetics,
@@ -11,11 +11,14 @@ import { useLocale } from "../i18n.js";
 import ActionButton from "./ActionButton.js";
 import { PLAYER_COLORS } from "./board-display.js";
 import { botDifficultyName, nextBotDifficulty } from "./bot-display.js";
-import CharacterCustomizerDialog from "./CharacterCustomizer.js";
 import { saveOwnCosmetics } from "./cosmetics-store.js";
 import Icon from "./Icon.js";
 import PlayerAvatar from "./PlayerAvatar.js";
 import "./RoomPeople.css";
+
+const CharacterCustomizerDialog = lazy(
+  () => import("./CharacterCustomizer.js"),
+);
 
 const SEATS = [0, 1, 2, 3, 4] as const;
 
@@ -467,21 +470,23 @@ export function LobbySeats({
         })}
       </ul>
       {editingCosmeticsSeat !== null && editingPlayer?.control && (
-        <CharacterCustomizerDialog
-          open
-          seat={editingCosmeticsSeat}
-          playerName={editingPlayer.name}
-          value={resolveCosmetics(
-            editingCosmeticsSeat,
-            editingPlayer.control,
-            editingPlayer.cosmetics,
-          )}
-          onClose={() => setEditingCosmeticsSeat(null)}
-          onApply={(next) => {
-            if (editingCosmeticsSeat === you) saveOwnCosmetics(next);
-            onCosmetics?.(editingCosmeticsSeat, next);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CharacterCustomizerDialog
+            open
+            seat={editingCosmeticsSeat}
+            playerName={editingPlayer.name}
+            value={resolveCosmetics(
+              editingCosmeticsSeat,
+              editingPlayer.control,
+              editingPlayer.cosmetics,
+            )}
+            onClose={() => setEditingCosmeticsSeat(null)}
+            onApply={(next) => {
+              if (editingCosmeticsSeat === you) saveOwnCosmetics(next);
+              onCosmetics?.(editingCosmeticsSeat, next);
+            }}
+          />
+        </Suspense>
       )}
     </>
   );
