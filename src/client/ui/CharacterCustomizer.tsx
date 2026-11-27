@@ -176,9 +176,10 @@ export default function CharacterCustomizerDialog({
                 }}
                 onCreated={({ camera }) => camera.lookAt(0, 0.04, 0)}
               >
-                <ambientLight intensity={1.1} />
+                <ambientLight intensity={1.15} />
                 <directionalLight position={[-2, 4, 3]} intensity={1.35} />
-                <hemisphereLight args={["#eef8ff", "#b3ad92", 0.7]} />
+                <directionalLight position={[2, 1.5, 2.5]} intensity={0.5} />
+                <hemisphereLight args={["#eef8ff", "#c4bda2", 0.9]} />
                 <TurntablePawn
                   seat={seat}
                   cosmetics={draft}

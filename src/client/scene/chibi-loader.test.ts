@@ -93,6 +93,9 @@ describe("Chibi 3D articulated rig", () => {
       const mesh = new THREE.Mesh(sharedGeo, mat);
       mesh.name = name.startsWith("Giày • thân") ? `${sanitized}_1` : sanitized;
       mesh.position.set(0.1, 0.5, 0);
+      if (name.startsWith("Mắt")) {
+        mesh.scale.set(0.0286, 0.0286, 0.0286);
+      }
       template.add(mesh);
     }
     template.updateMatrixWorld(true);
@@ -106,6 +109,7 @@ describe("Chibi 3D articulated rig", () => {
     expect(rig.leftLeg.children).toHaveLength(6);
     expect(rig.rightLeg.children).toHaveLength(6);
     expect(rig.eyes).toHaveLength(2);
+    expect(rig.eyes[0]?.baseScaleY).toBeCloseTo(0.0286, 4);
     expect(rig.brows).toHaveLength(2);
 
     // Check relative pivot offset preserves world rest pose.

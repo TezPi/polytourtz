@@ -240,8 +240,8 @@ export default function ChibiCharacter({
       animated && blinkCycle < 0.14
         ? 0.12 + 0.88 * Math.abs((blinkCycle - 0.07) / 0.07)
         : 1;
-    for (const eye of rig.eyes) {
-      eye.scale.y = eyeSquint;
+    for (const { node, baseScaleY } of rig.eyes) {
+      node.scale.y = baseScaleY * eyeSquint;
     }
     const browLift = m.airBlend * 0.012 + m.activeBlend * 0.006;
     for (const { node, baseY } of rig.brows) {

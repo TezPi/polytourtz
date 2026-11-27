@@ -94,6 +94,11 @@ export type ChibiBrow = {
   readonly baseY: number;
 };
 
+export type ChibiEye = {
+  readonly node: THREE.Object3D;
+  readonly baseScaleY: number;
+};
+
 export type ChibiRigInstance = {
   readonly torso: THREE.Group;
   readonly head: THREE.Group;
@@ -101,7 +106,7 @@ export type ChibiRigInstance = {
   readonly rightArm: THREE.Group;
   readonly leftLeg: THREE.Group;
   readonly rightLeg: THREE.Group;
-  readonly eyes: readonly THREE.Object3D[];
+  readonly eyes: readonly ChibiEye[];
   readonly brows: readonly ChibiBrow[];
   readonly shirtMaterials: readonly THREE.MeshStandardMaterial[];
   readonly collarMaterials: readonly THREE.MeshStandardMaterial[];
@@ -172,7 +177,7 @@ export function instantiateChibiRig(template: THREE.Group): ChibiRigInstance {
     leftLeg: new THREE.Group(),
     rightLeg: new THREE.Group(),
   };
-  const eyes: THREE.Object3D[] = [];
+  const eyes: ChibiEye[] = [];
   const brows: ChibiBrow[] = [];
   const shirtMaterials = new Set<THREE.MeshStandardMaterial>();
   const collarMaterials = new Set<THREE.MeshStandardMaterial>();
@@ -234,7 +239,7 @@ export function instantiateChibiRig(template: THREE.Group): ChibiRigInstance {
 
     const partName = normalizePartName(node.name);
     if (partName === "Mắt phải" || partName === "Mắt trái") {
-      eyes.push(clonedMesh);
+      eyes.push({ node: clonedMesh, baseScaleY: clonedMesh.scale.y });
     } else if (partName === "Chân mày phải" || partName === "Chân mày trái") {
       brows.push({ node: clonedMesh, baseY: clonedMesh.position.y });
     }
